@@ -1434,7 +1434,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mdt"
+name = "mdt-minecraft"
 version = "0.3.0"
 dependencies = [
  "clap",
