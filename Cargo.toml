@@ -1,0 +1,31 @@
+[package]
+name = "mdt"
+version = "0.3.0"
+edition = "2024"
+description = "Minecraft Download Toolkit — an ergonomic, low-level library for downloading and installing Minecraft versions and mod loaders."
+readme = "README.md"
+
+[features]
+default = []
+cli = ["tui", "dep:clap"]
+tui = ["dep:crossterm", "dep:ratatui"]
+
+[dependencies]
+tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "fs", "io-util"] }
+reqwest = { version = "0.13.5", features = ["json", "stream"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+quick-xml = { version = "0.42.0", features = ["serialize"] }
+sha1 = "0.11.0"
+hex = "0.4.3"
+zip = "9.0.5"
+futures = "0.3.34"
+thiserror = "2.0"
+
+# Terminal UI / CLI — strictly optional, never compiled unless the feature is enabled.
+clap = { version = "4.6.7", features = ["derive"], optional = true }
+crossterm = { version = "0.29.0", optional = true }
+ratatui = { version = "0.30.2", optional = true }
+
+[dev-dependencies]
+serde_json = "1.0.154"
