@@ -30,7 +30,7 @@ pub async fn install(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
-    let urls = ManifestUrls::new(req.mirror);
+    let urls = ManifestUrls::try_new(&req.mirror)?;
 
     // Unparseable versions (e.g. snapshots) are treated as modern.
     let use_method_a = match McVersion::parse(&req.mc_version) {
@@ -58,7 +58,7 @@ async fn install_modern(
         urls.forge_maven, maven_version, maven_version
     );
 
-    install_via_official_installer(http, &installer_url, &req.root_dir, req.mirror, urls).await?;
+    install_via_official_installer(http, &installer_url, &req.root_dir, &req.mirror, urls).await?;
 
     // Verify: the official installer should produce a version JSON. Modern installers reuse the
     // vanilla client JAR via `inheritsFrom`, so only the JSON is required.
@@ -101,7 +101,7 @@ async fn install_legacy(
         http,
         &installer_url,
         &req.root_dir,
-        req.mirror,
+        &req.mirror,
         urls,
         &req.mc_version,
         &forge_version,

@@ -80,6 +80,10 @@ pub enum MdtError {
     /// A manifest or version document was structurally invalid.
     #[error("invalid manifest: {0}")]
     InvalidManifest(String),
+
+    /// A mirror provider name is not declared in `providers.toml`.
+    #[error("unknown mirror provider: {0}")]
+    UnknownProvider(String),
 }
 
 impl MdtError {

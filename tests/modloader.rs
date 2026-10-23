@@ -160,30 +160,30 @@ fn test_neoforge_mc_prefix() {
 
 #[test]
 fn test_apply_maven_mirror() {
-    let urls = ManifestUrls::new(Mirror::BMCLAPI);
+    let urls = ManifestUrls::new(&Mirror::BMCLAPI);
     const M: &str = "https://bmclapi2.bangbang93.com/maven";
 
     assert_eq!(
-        urls.apply_maven_mirror("http://files.minecraftforge.net/maven/net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859-universal.jar", Mirror::BMCLAPI),
+        urls.apply_maven_mirror("http://files.minecraftforge.net/maven/net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859-universal.jar", &Mirror::BMCLAPI),
         format!("{M}/net/minecraftforge/forge/1.12.2-14.23.5.2859/forge-1.12.2-14.23.5.2859-universal.jar")
     );
     assert_eq!(
-        urls.apply_maven_mirror("https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json", Mirror::BMCLAPI),
+        urls.apply_maven_mirror("https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json", &Mirror::BMCLAPI),
         format!("{M}/net/minecraftforge/forge/maven-metadata.json")
     );
     assert_eq!(
-        urls.apply_maven_mirror("https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.15.11/fabric-loader-0.15.11.jar", Mirror::BMCLAPI),
+        urls.apply_maven_mirror("https://maven.fabricmc.net/net/fabricmc/fabric-loader/0.15.11/fabric-loader-0.15.11.jar", &Mirror::BMCLAPI),
         format!("{M}/net/fabricmc/fabric-loader/0.15.11/fabric-loader-0.15.11.jar")
     );
     // Quilt Maven: BMCLAPI does not proxy org.quiltmc, so keep the official URL.
     assert_eq!(
-        urls.apply_maven_mirror("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-loader/0.24.0/quilt-loader-0.24.0.jar", Mirror::BMCLAPI),
+        urls.apply_maven_mirror("https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-loader/0.24.0/quilt-loader-0.24.0.jar", &Mirror::BMCLAPI),
         "https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-loader/0.24.0/quilt-loader-0.24.0.jar"
     );
     // Mojang source returns unchanged.
-    let mojang = ManifestUrls::new(Mirror::Mojang);
+    let mojang = ManifestUrls::new(&Mirror::Mojang);
     assert_eq!(
-        mojang.apply_maven_mirror("http://files.minecraftforge.net/maven/x", Mirror::Mojang),
+        mojang.apply_maven_mirror("http://files.minecraftforge.net/maven/x", &Mirror::Mojang),
         "http://files.minecraftforge.net/maven/x"
     );
 }
@@ -204,7 +204,7 @@ fn test_generated_library_maven() {
 
 #[test]
 fn test_profile_url_order() {
-    let mojang = ManifestUrls::new(Mirror::Mojang);
+    let mojang = ManifestUrls::new(&Mirror::Mojang);
     assert_eq!(
         mojang.fabric_profile("0.16.14", "1.20.1"),
         "https://meta.fabricmc.net/v2/versions/loader/1.20.1/0.16.14/profile/json"
@@ -250,7 +250,7 @@ fn test_loader_versions_forge_strips_mc_prefix() {
 
 #[test]
 fn test_apply_mirror_to_json() {
-    let urls = ManifestUrls::new(Mirror::BMCLAPI);
+    let urls = ManifestUrls::new(&Mirror::BMCLAPI);
     let profile: serde_json::Value = serde_json::from_str(
         r#"{
             "id": "quilt-loader-0.24.0-1.20.1",
@@ -262,7 +262,7 @@ fn test_apply_mirror_to_json() {
     )
     .unwrap();
 
-    let mirrored = apply_mirror_to_json(profile, Mirror::BMCLAPI, &urls);
+    let mirrored = apply_mirror_to_json(profile, &Mirror::BMCLAPI, &urls);
     let libs = mirrored["libraries"].as_array().unwrap();
     assert_eq!(libs[0]["url"], "https://bmclapi2.bangbang93.com/maven/");
     assert_eq!(libs[1]["url"], "https://maven.quiltmc.org/repository/release/");
@@ -270,17 +270,32 @@ fn test_apply_mirror_to_json() {
 
 #[test]
 fn test_quilt_profile_url_fallback() {
-    let bmclapi = ManifestUrls::new(Mirror::BMCLAPI);
+    let bmclapi = ManifestUrls::new(&Mirror::BMCLAPI);
     assert_eq!(
-        bmclapi.quilt_profile_url("0.24.0", "1.20.1", Mirror::BMCLAPI),
+        bmclapi.quilt_profile_url("0.24.0", "1.20.1", &Mirror::BMCLAPI),
         "https://meta.quiltmc.org/v3/versions/loader/1.20.1/0.24.0/profile/json"
     );
 
-    let mojang = ManifestUrls::new(Mirror::Mojang);
+    let mojang = ManifestUrls::new(&Mirror::Mojang);
     assert_eq!(
-        mojang.quilt_profile_url("0.24.0", "1.20.1", Mirror::Mojang),
+        mojang.quilt_profile_url("0.24.0", "1.20.1", &Mirror::Mojang),
         "https://meta.quiltmc.org/v3/versions/loader/1.20.1/0.24.0/profile/json"
     );
+}
+
+#[test]
+fn test_provider_name_resolves_builtin_name() {
+    assert_eq!(Mirror::Custom("mojang".to_string()).provider_name(), "mojang");
+    assert_eq!(Mirror::Custom("bmclapi".to_string()).provider_name(), "bmclapi");
+
+    // A custom mirror keyed to a built-in provider name resolves to the same endpoint table.
+    let via_custom = ManifestUrls::new(&Mirror::Custom("bmclapi".to_string()));
+    let via_builtin = ManifestUrls::new(&Mirror::BMCLAPI);
+    assert_eq!(via_custom.minecraft, via_builtin.minecraft);
+    assert_eq!(via_custom.forge_maven, via_builtin.forge_maven);
+
+    // `other()` on a custom mirror falls back to the default mirror.
+    assert_eq!(Mirror::Custom("anything".to_string()).other(), Mirror::default());
 }
 
 #[test]

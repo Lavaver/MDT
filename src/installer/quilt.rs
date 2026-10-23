@@ -14,7 +14,7 @@ pub async fn install(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
-    let urls = ManifestUrls::new(req.mirror);
-    let profile_url = urls.quilt_profile_url(&req.loader_version, &req.mc_version, req.mirror);
+    let urls = ManifestUrls::try_new(&req.mirror)?;
+    let profile_url = urls.quilt_profile_url(&req.loader_version, &req.mc_version, &req.mirror);
     install_from_profile(http, &profile_url, &req, &urls).await
 }

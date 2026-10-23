@@ -18,7 +18,7 @@ pub async fn install(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
-    let urls = ManifestUrls::new(req.mirror);
+    let urls = ManifestUrls::try_new(&req.mirror)?;
     let id = loader_version_id(&req.mc_version, ModLoader::Liteloader, &req.loader_version);
 
     // 1. Download the LiteLoader core JAR (non-standard repository, dedicated download endpoint).
@@ -29,7 +29,7 @@ pub async fn install(
         "{}/{}/liteloader-{}.jar",
         urls.liteloader_base, req.mc_version, req.loader_version
     );
-    let real_url = urls.apply_mirror(&liteloader_url, req.mirror);
+    let real_url = urls.apply_mirror(&liteloader_url, &req.mirror);
     download_to_file(http, &real_url, &liteloader_dest).await?;
 
     // 2. Download LaunchWrapper and ASM (required at runtime).
@@ -38,7 +38,7 @@ pub async fn install(
         "net.minecraft:launchwrapper:1.12",
         "https://libraries.minecraft.net/",
         &req.root_dir,
-        req.mirror,
+        &req.mirror,
         &urls,
     )
     .await?;
@@ -47,7 +47,7 @@ pub async fn install(
         "org.ow2.asm:asm-all:5.2",
         "https://libraries.minecraft.net/",
         &req.root_dir,
-        req.mirror,
+        &req.mirror,
         &urls,
     )
     .await?;

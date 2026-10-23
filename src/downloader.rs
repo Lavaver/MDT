@@ -159,7 +159,7 @@ pub async fn execute_downloads(
     http: &reqwest::Client,
     tasks: Vec<DownloadTask>,
     concurrency: usize,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
 ) -> Result<(), MdtError> {
     if tasks.is_empty() {
@@ -205,7 +205,7 @@ async fn sha1_file(path: &Path) -> Result<String, MdtError> {
 /// Download a single file and verify its SHA-1 (no pre-check, no natives extraction).
 async fn download_file_stream(
     task: &DownloadTask,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
     http: &reqwest::Client,
 ) -> Result<(), MdtError> {
@@ -239,7 +239,7 @@ async fn download_file_stream(
 /// natives when requested.
 async fn download_single_file(
     task: DownloadTask,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
     http: &reqwest::Client,
 ) -> Result<(), MdtError> {

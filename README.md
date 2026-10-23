@@ -76,12 +76,16 @@ match client.install_modloader("1.20.1", ModLoader::Forge, "47.2.0").await {
 
 ## Mirrors
 
-| Variant           | Description                                                                      |
-|-------------------|----------------------------------------------------------------------------------|
-| `Mirror::BMCLAPI` | Community mirror (default). Proxies Mojang, Fabric, Forge, NeoForge, LiteLoader. |
-| `Mirror::Mojang`  | Official upstream.                                                               |
+| Variant                  | Description                                                                      |
+|--------------------------|----------------------------------------------------------------------------------|
+| `Mirror::BMCLAPI`        | Community mirror (default). Proxies Mojang, Fabric, Forge, NeoForge, LiteLoader. |
+| `Mirror::Mojang`         | Official upstream.                                                               |
+| `Mirror::Custom("name")` | A custom provider declared as a `[name]` section in `providers.toml`.            |
 
-Failed requests automatically fall back to the opposite mirror.
+Failed requests automatically fall back to the opposite mirror (a custom mirror falls back to
+`BMCLAPI`). Endpoint URLs and URL-rewrite rules are declared in `providers.toml` and compiled
+into static tables at build time — see [docs/mirror_toml.md](docs/mirror_toml.md) for the TOML
+layout and [docs/mirror_uri.md](docs/mirror_uri.md) for the endpoint spec.
 
 ## Loaders
 
@@ -101,10 +105,40 @@ The core library is **100% terminal-agnostic**. Terminal UI and CLI parsing are 
 feature-gated, so `crossterm`, `ratatui`, and `clap` are never compiled unless requested:
 
 ```toml
-mdt = { version = "0.3", features = ["cli"] }   # CLI + TUI
-mdt = { version = "0.3", features = ["tui"] }   # TUI only
-mdt = "0.3"                                     # library only (no terminal deps)
+mdt = { version = "0.4", features = ["cli"] }   # CLI + TUI
+mdt = { version = "0.4", features = ["tui"] }   # TUI only
+mdt = "0.4"                                     # library only (no terminal deps)
 ```
+
+## Changelog
+
+### v0.4.0 — custom mirror providers
+
+Mirror endpoints and URL-rewrite rules are no longer hard-coded. They now live in
+`providers.toml` and are compiled into `&'static` lookup tables at build time by the
+`mdt-macros::providers!` proc macro (the MDT analogue of `rust-i18n`'s `i18n!`), so nothing is
+parsed at runtime.
+
+- **Custom mirrors** — `Mirror::Custom("name")` selects a `[name]` section from `providers.toml`,
+  with its own endpoint URLs and ordered `mirror` / `maven` rewrite rules (and a
+  `maven_exclude` list). Add a section, rebuild, and select it at runtime.
+- **Fallible endpoint lookup** — `ManifestUrls::new` is split into `try_new` (returns
+  `MdtError::UnknownProvider` for an undeclared name) and `new` (panics).
+- **New error variant** — `MdtError::UnknownProvider`.
+- **Breaking** — `Mirror` is now `Clone` (not `Copy`), and every `Mirror` parameter is passed by
+  reference (`&Mirror`). Update call sites like `client.mirror()` and
+  `ManifestUrls::new(mirror)` accordingly.
+- **New docs** — [docs/mirror_toml.md](docs/mirror_toml.md) (TOML layout) and
+  [docs/mirror_uri.md](docs/mirror_uri.md) (endpoint URI spec).
+- **Workspace** — `Cargo.toml` is now a workspace; `mdt-macros` is a new member crate.
+
+### v0.3.1
+
+Added the README badge and upgraded Tokio.
+
+### v0.3.0
+
+Initial release of MDT as an ergonomic library.
 
 ## License
 

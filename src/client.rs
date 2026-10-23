@@ -57,8 +57,8 @@ impl MdtClient {
     }
 
     /// The active mirror source.
-    pub fn mirror(&self) -> Mirror {
-        self.mirror
+    pub fn mirror(&self) -> &Mirror {
+        &self.mirror
     }
 
     /// The target `.minecraft` root directory.
@@ -73,7 +73,7 @@ impl MdtClient {
 
     /// Fetch the list of available Minecraft versions.
     pub async fn versions(&self) -> Result<Vec<VersionEntry>, MdtError> {
-        let manifest = manifest::fetch_minecraft_version_manifest(&self.http, self.mirror).await?;
+        let manifest = manifest::fetch_minecraft_version_manifest(&self.http, &self.mirror).await?;
         Ok(manifest.versions)
     }
 
@@ -88,7 +88,7 @@ impl MdtClient {
     /// * [`MdtError::VersionNotFound`] if `version` is not in the manifest.
     /// * [`MdtError::NetworkError`] / [`MdtError::ChecksumMismatch`] on download failures.
     pub async fn install_vanilla(&self, version: &str) -> Result<VersionJson, MdtError> {
-        let manifest = manifest::fetch_minecraft_version_manifest(&self.http, self.mirror).await?;
+        let manifest = manifest::fetch_minecraft_version_manifest(&self.http, &self.mirror).await?;
         let entry = manifest
             .versions
             .iter()
@@ -96,8 +96,8 @@ impl MdtClient {
             .cloned()
             .ok_or_else(|| MdtError::VersionNotFound(version.to_string()))?;
 
-        let urls = ManifestUrls::new(self.mirror);
-        let version_url = urls.apply_mirror(&entry.url, self.mirror);
+        let urls = ManifestUrls::try_new(&self.mirror)?;
+        let version_url = urls.apply_mirror(&entry.url, &self.mirror);
         let text = self
             .http
             .get(&version_url)
@@ -117,7 +117,7 @@ impl MdtClient {
 
         // Client JAR + libraries (+ asset index). The vanilla directory is left pristine.
         let tasks = downloader::build_tasks_from_version_json(&version_json, &self.root);
-        downloader::execute_downloads(&self.http, tasks, self.concurrency, self.mirror, &urls).await?;
+        downloader::execute_downloads(&self.http, tasks, self.concurrency, &self.mirror, &urls).await?;
 
         // Assets.
         if let Some(asset_index) = &version_json.asset_index {
@@ -129,7 +129,7 @@ impl MdtClient {
             let content = tokio::fs::read_to_string(&asset_index_path).await?;
             let index: AssetIndex = serde_json::from_str(&content)?;
             let asset_tasks = downloader::build_tasks_from_asset_index(&index, &self.root);
-            downloader::execute_downloads(&self.http, asset_tasks, self.concurrency, self.mirror, &urls).await?;
+            downloader::execute_downloads(&self.http, asset_tasks, self.concurrency, &self.mirror, &urls).await?;
         }
 
         Ok(version_json)
@@ -164,7 +164,7 @@ impl MdtClient {
             loader,
             loader_version: loader_version.to_string(),
             root_dir: self.root.clone(),
-            mirror: self.mirror,
+            mirror: self.mirror.clone(),
         };
         installer::install_modloader(&self.http, req).await
     }

@@ -97,7 +97,7 @@ impl GeneratedVersionJson {
 /// Recursively rewrite every `"url"` string in a JSON value through the active mirror.
 pub fn apply_mirror_to_json(
     mut value: serde_json::Value,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
 ) -> serde_json::Value {
     match &mut value {
@@ -133,7 +133,7 @@ pub async fn download_library(
     name: &str,
     base_url: &str,
     root: &Path,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
 ) -> Result<(), MdtError> {
     let rel = library_path_from_name(name)?;
@@ -182,10 +182,10 @@ pub async fn install_from_profile(
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| MdtError::InvalidManifest("loader profile library is missing `url`".to_string()))?;
-        download_library(http, name, base, &req.root_dir, req.mirror, urls).await?;
+        download_library(http, name, base, &req.root_dir, &req.mirror, urls).await?;
     }
 
-    let profile = apply_mirror_to_json(profile, req.mirror, urls);
+    let profile = apply_mirror_to_json(profile, &req.mirror, urls);
     let vdir = version_dir(&req.root_dir, &id);
     tokio::fs::create_dir_all(&vdir).await?;
     let json_path = vdir.join(format!("{id}.json"));
@@ -204,7 +204,7 @@ pub async fn install_legacy_forge(
     http: &reqwest::Client,
     installer_url: &str,
     root: &Path,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
     mc_version: &str,
     loader_version: &str,

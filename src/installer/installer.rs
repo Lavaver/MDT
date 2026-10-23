@@ -17,7 +17,7 @@ pub async fn install_via_official_installer(
     http: &reqwest::Client,
     installer_url: &str,
     root_dir: &Path,
-    mirror: Mirror,
+    mirror: &Mirror,
     urls: &ManifestUrls,
 ) -> Result<(), MdtError> {
     let temp_dir = root_dir.join(".mdt-installer-tmp");

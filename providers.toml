@@ -1,0 +1,93 @@
+# Mirror source providers.
+#
+# Each `[provider_name]` section declares one mirror provider. The keys are the
+# endpoint / base-URL fields consumed by MDT — see docs/mirror_uri.md for the
+# URI specification and docs/mirror_toml.md for the TOML layout. The two built-in
+# providers (`mojang`, `bmclapi`) must always be present; extra `[name]` sections
+# may be added freely to register additional mirrors.
+
+[mojang]
+minecraft = "https://piston-meta.mojang.com/mc/game/version_manifest.json"
+forge = "https://files.minecraftforge.net/net/minecraftforge/forge/maven-metadata.json"
+fabric = "https://meta.fabricmc.net/v2/versions"
+quilt = "https://meta.quiltmc.org/v3/versions"
+neoforge = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml"
+liteloader = "https://repo.mumfrey.com/content/repositories/snapshots/com/mumfrey/liteloader/maven-metadata.xml"
+forge_maven = "https://maven.minecraftforge.net"
+fabric_maven = "https://maven.fabricmc.net"
+quilt_maven = "https://maven.quiltmc.org/repository/release"
+neoforge_maven = "https://maven.neoforged.net/releases"
+liteloader_base = "https://dl.liteloader.com/versions"
+fabric_meta = "https://meta.fabricmc.net"
+quilt_meta = "https://meta.quiltmc.org"
+
+[bmclapi]
+minecraft = "https://bmclapi2.bangbang93.com/mc/game/version_manifest.json"
+forge = "https://bmclapi2.bangbang93.com/maven/net/minecraftforge/forge/maven-metadata.json"
+fabric = "https://bmclapi2.bangbang93.com/fabric-meta/v2/versions"
+quilt = "https://bmclapi2.bangbang93.com/quilt-meta/v3/versions"
+neoforge = "https://bmclapi2.bangbang93.com/maven/net/neoforged/neoforge/maven-metadata.xml"
+liteloader = "https://bmclapi2.bangbang93.com/liteloader/list"
+forge_maven = "https://bmclapi2.bangbang93.com/maven"
+fabric_maven = "https://bmclapi2.bangbang93.com/maven"
+quilt_maven = "https://bmclapi2.bangbang93.com/maven"
+neoforge_maven = "https://bmclapi2.bangbang93.com/maven"
+liteloader_base = "https://bmclapi2.bangbang93.com/liteloader/download"
+fabric_meta = "https://bmclapi2.bangbang93.com/fabric-meta"
+quilt_meta = "https://bmclapi2.bangbang93.com/quilt-meta"
+
+# Hosts whose URLs `apply_maven_mirror` must leave untouched (matched by substring).
+maven_exclude = ["maven.quiltmc.org"]
+
+# URL rewriting applied by `ManifestUrls::apply_mirror` (asset / version-json URLs),
+# in order. A provider with no `mirror` rules (e.g. `mojang`) leaves URLs unchanged.
+[[bmclapi.mirror]]
+from = "https://libraries.minecraft.net"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.mirror]]
+from = "https://piston-data.mojang.com"
+to = "https://bmclapi2.bangbang93.com"
+
+[[bmclapi.mirror]]
+from = "https://piston-meta.mojang.com"
+to = "https://bmclapi2.bangbang93.com"
+
+[[bmclapi.mirror]]
+from = "https://launchermeta.mojang.com"
+to = "https://bmclapi2.bangbang93.com"
+
+[[bmclapi.mirror]]
+from = "https://resources.download.minecraft.net"
+to = "https://bmclapi2.bangbang93.com/assets"
+
+# Maven URL rewriting applied by `ManifestUrls::apply_maven_mirror`, in order.
+# `files.minecraftforge.net/maven` must be matched before `files.minecraftforge.net`
+# to avoid path duplication.
+[[bmclapi.maven]]
+from = "http://files.minecraftforge.net/maven"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://files.minecraftforge.net/maven"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://files.minecraftforge.net"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://maven.fabricmc.net"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://maven.minecraftforge.net"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://maven.neoforged.net"
+to = "https://bmclapi2.bangbang93.com/maven"
+
+[[bmclapi.maven]]
+from = "https://libraries.minecraft.net"
+to = "https://bmclapi2.bangbang93.com/maven"

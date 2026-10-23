@@ -11,7 +11,7 @@ pub async fn install(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
-    let urls = ManifestUrls::new(req.mirror);
+    let urls = ManifestUrls::try_new(&req.mirror)?;
     let id = installer_version_id(&req.mc_version, ModLoader::Neoforge, &req.loader_version);
 
     // NeoForge's Maven version is the loader version itself (e.g. `47.1.106`), no MC prefix.
@@ -21,7 +21,7 @@ pub async fn install(
         urls.neoforge_maven, maven_version, maven_version
     );
 
-    install_via_official_installer(http, &installer_url, &req.root_dir, req.mirror, &urls).await?;
+    install_via_official_installer(http, &installer_url, &req.root_dir, &req.mirror, &urls).await?;
 
     // Verify: the official installer should produce a version JSON.
     let vdir = version_dir(&req.root_dir, &id);

@@ -149,10 +149,10 @@ async fn fetch_text(
 /// Fetch the Minecraft version manifest.
 pub async fn fetch_minecraft_version_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<MinecraftVersionsList, MdtError> {
-    let primary = ManifestUrls::new(mirror);
-    let fallback = ManifestUrls::new(mirror.other());
+    let primary = ManifestUrls::try_new(mirror)?;
+    let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.minecraft.as_str(), fallback.minecraft.as_str()];
     let text = fetch_text(http, &candidates, "Minecraft version manifest").await?;
     Ok(serde_json::from_str(&text)?)
@@ -161,10 +161,10 @@ pub async fn fetch_minecraft_version_manifest(
 /// Fetch the Forge version manifest.
 pub async fn fetch_forge_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<ForgeVersionsList, MdtError> {
-    let primary = ManifestUrls::new(mirror);
-    let fallback = ManifestUrls::new(mirror.other());
+    let primary = ManifestUrls::try_new(mirror)?;
+    let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.forge.as_str(), fallback.forge.as_str()];
     let text = fetch_text(http, &candidates, "Forge manifest").await?;
     Ok(serde_json::from_str(&text)?)
@@ -173,10 +173,10 @@ pub async fn fetch_forge_manifest(
 /// Fetch the Fabric version manifest.
 pub async fn fetch_fabric_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<FabricVersionsList, MdtError> {
-    let primary = ManifestUrls::new(mirror);
-    let fallback = ManifestUrls::new(mirror.other());
+    let primary = ManifestUrls::try_new(mirror)?;
+    let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.fabric.as_str(), fallback.fabric.as_str()];
     let text = fetch_text(http, &candidates, "Fabric manifest").await?;
     Ok(serde_json::from_str(&text)?)
@@ -185,10 +185,10 @@ pub async fn fetch_fabric_manifest(
 /// Fetch the Quilt version manifest.
 pub async fn fetch_quilt_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<QuiltVersionsList, MdtError> {
-    let primary = ManifestUrls::new(mirror);
-    let fallback = ManifestUrls::new(mirror.other());
+    let primary = ManifestUrls::try_new(mirror)?;
+    let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.quilt.as_str(), fallback.quilt.as_str()];
     let text = fetch_text(http, &candidates, "Quilt manifest").await?;
     Ok(serde_json::from_str(&text)?)
@@ -197,10 +197,10 @@ pub async fn fetch_quilt_manifest(
 /// Fetch the NeoForge version manifest (Maven XML).
 pub async fn fetch_neoforge_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<MavenMetadata, MdtError> {
-    let primary = ManifestUrls::new(mirror);
-    let fallback = ManifestUrls::new(mirror.other());
+    let primary = ManifestUrls::try_new(mirror)?;
+    let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.neoforge.as_str(), fallback.neoforge.as_str()];
     let text = fetch_text(http, &candidates, "NeoForge manifest").await?;
     Ok(quick_xml::de::from_str(&text)?)
@@ -209,21 +209,22 @@ pub async fn fetch_neoforge_manifest(
 /// Fetch the LiteLoader version manifest, falling back to the opposite mirror on failure.
 pub async fn fetch_liteloader_manifest(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<Vec<LiteLoaderVersionEntry>, MdtError> {
     match fetch_liteloader_as(http, mirror).await {
         Ok(entries) => Ok(entries),
-        Err(_) => fetch_liteloader_as(http, mirror.other()).await,
+        Err(_) => fetch_liteloader_as(http, &mirror.other()).await,
     }
 }
 
 async fn fetch_liteloader_as(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<Vec<LiteLoaderVersionEntry>, MdtError> {
-    let urls = ManifestUrls::new(mirror);
+    let urls = ManifestUrls::try_new(mirror)?;
     match mirror {
-        Mirror::Mojang => {
+        // Custom mirrors are assumed to serve the official Maven-XML format, like Mojang.
+        Mirror::Mojang | Mirror::Custom(_) => {
             let text = fetch_text(http, &[urls.liteloader.as_str()], "LiteLoader manifest").await?;
             let meta: MavenMetadata = quick_xml::de::from_str(&text)?;
             Ok(meta
@@ -273,7 +274,7 @@ pub struct ManifestData {
 /// Fetch every manifest concurrently.
 pub async fn fetch_all_manifests(
     http: &reqwest::Client,
-    mirror: Mirror,
+    mirror: &Mirror,
 ) -> Result<ManifestData, MdtError> {
     let (minecraft, forge, fabric, quilt, neoforge, liteloader) = tokio::try_join!(
         fetch_minecraft_version_manifest(http, mirror),
