@@ -1,4 +1,4 @@
-//! The central [`MdtClient`] and its builder.
+//! The [`MdtClient`] and its builder.
 
 use std::path::{Path, PathBuf};
 
@@ -12,13 +12,13 @@ use crate::modloader::ModLoader;
 use crate::urls::ManifestUrls;
 
 /// Default download concurrency.
-const DEFAULT_CONCURRENCY: usize = 32;
-
-/// The central, plug-and-play MDT state container.
 ///
-/// It owns the shared HTTP client (with connection pooling), the active [`Mirror`], and the
-/// target `.minecraft` root directory. Build one with [`MdtClient::builder`] and reuse it across
-/// as many installs as you like.
+/// Three is enough for most connections; go higher and some mirrors will rate-limit or 403 you.
+const DEFAULT_CONCURRENCY: usize = 3;
+
+/// The `MdtClient`. One instance holds everything a download needs: a pooled HTTP client, the
+/// active [`Mirror`], and the `.minecraft` root directory. Build one with [`MdtClient::builder`]
+/// and reuse it for as many installs as you want.
 ///
 /// ```no_run
 /// use mdt::{MdtClient, Mirror, ModLoader};
@@ -51,7 +51,7 @@ impl MdtClient {
         MdtClientBuilder::new()
     }
 
-    /// The shared HTTP client (connection-pooled, browser User-Agent).
+    /// The shared HTTP client (connection-pooled, with a browser User-Agent).
     pub fn http(&self) -> &reqwest::Client {
         &self.http
     }
@@ -71,6 +71,14 @@ impl MdtClient {
         self.concurrency
     }
 
+    /// Change the download concurrency at runtime (clamped to at least 1).
+    ///
+    /// Unlike [`MdtClientBuilder::concurrency`], this works after the client is built — handy for
+    /// a user preference or a `--jobs`-style CLI flag.
+    pub fn set_concurrency(&mut self, concurrency: usize) {
+        self.concurrency = concurrency.max(1);
+    }
+
     /// Fetch the list of available Minecraft versions.
     pub async fn versions(&self) -> Result<Vec<VersionEntry>, MdtError> {
         let manifest = manifest::fetch_minecraft_version_manifest(&self.http, &self.mirror).await?;
@@ -79,13 +87,13 @@ impl MdtClient {
 
     /// Download and install a vanilla Minecraft version.
     ///
-    /// Returns the parsed [`VersionJson`] for the installed version. Handles library rules,
-    /// natives extraction, the client JAR, and assets. The version JSON is persisted to
-    /// `versions/<id>/<id>.json` so launchers and loader installers can read it.
+    /// Returns the parsed [`VersionJson`]. Downloads the client JAR, libraries (rules and natives
+    /// extraction included), and asset index, and writes the version JSON to
+    /// `versions/<id>/<id>.json` so launchers and loader installers can read it back.
     ///
     /// # Errors
     ///
-    /// * [`MdtError::VersionNotFound`] if `version` is not in the manifest.
+    /// * [`MdtError::VersionNotFound`] if `version` isn't in the manifest.
     /// * [`MdtError::NetworkError`] / [`MdtError::ChecksumMismatch`] on download failures.
     pub async fn install_vanilla(&self, version: &str) -> Result<VersionJson, MdtError> {
         let manifest = manifest::fetch_minecraft_version_manifest(&self.http, &self.mirror).await?;
@@ -110,12 +118,12 @@ impl MdtClient {
             MdtError::JsonParseError(e).context(format!("parsing version JSON for {version}"))
         })?;
 
-        // Persist the vanilla version JSON.
+        // Save the vanilla version JSON.
         let vdir = self.root.join("versions").join(&version_json.id);
         tokio::fs::create_dir_all(&vdir).await?;
         tokio::fs::write(vdir.join(format!("{}.json", version_json.id)), &text).await?;
 
-        // Client JAR + libraries (+ asset index). The vanilla directory is left pristine.
+        // Client JAR + libraries (+ asset index). Vanilla stays untouched.
         let tasks = downloader::build_tasks_from_version_json(&version_json, &self.root);
         downloader::execute_downloads(&self.http, tasks, self.concurrency, &self.mirror, &urls).await?;
 
@@ -137,14 +145,13 @@ impl MdtClient {
 
     /// Install a mod loader into an isolated version directory.
     ///
-    /// Enforces the `[mc_version]+[Loader][LoaderVersion]` isolation convention (see
-    /// [`installer::loader_version_id`]), so the vanilla `versions/<mc_version>` directory is
-    /// never overwritten.
+    /// Uses the `[mc_version]+[Loader][LoaderVersion]` layout (see [`installer::loader_version_id`]),
+    /// so vanilla `versions/<mc_version>` is never overwritten.
     ///
     /// # Errors
     ///
-    /// * [`MdtError::LoaderInstallFailed`] if the loader is incompatible with `mc_version`.
-    /// * [`MdtError::JavaNotFound`] if a Method A loader is requested but no Java runtime exists.
+    /// * [`MdtError::LoaderInstallFailed`] if the loader doesn't support `mc_version`.
+    /// * [`MdtError::JavaNotFound`] if a Method A loader is requested but there's no Java.
     pub async fn install_modloader(
         &self,
         mc_version: &str,
@@ -179,7 +186,7 @@ pub struct MdtClientBuilder {
 }
 
 impl MdtClientBuilder {
-    /// Start building with defaults ([`Mirror::BMCLAPI`], root `.`, 32 concurrent downloads).
+    /// Start building with defaults ([`Mirror::BMCLAPI`], root `.`, 3 concurrent downloads).
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -189,7 +196,7 @@ impl MdtClientBuilder {
         }
     }
 
-    /// Select the mirror source (default: [`Mirror::BMCLAPI`]).
+    /// Pick a mirror (default: [`Mirror::BMCLAPI`]).
     #[must_use]
     pub fn mirror(mut self, mirror: Mirror) -> Self {
         self.mirror = mirror;
@@ -203,14 +210,14 @@ impl MdtClientBuilder {
         self
     }
 
-    /// Override the download concurrency (clamped to at least 1; default 32).
+    /// Override the download concurrency (clamped to at least 1; default 3).
     #[must_use]
     pub fn concurrency(mut self, concurrency: usize) -> Self {
         self.concurrency = concurrency.max(1);
         self
     }
 
-    /// Finalize the builder, creating the target root directory and the shared HTTP client.
+    /// Finish building: creates the root directory and the shared HTTP client.
     pub fn build(self) -> Result<MdtClient, MdtError> {
         std::fs::create_dir_all(&self.root)?;
         let http = http::build_client()?;
@@ -226,5 +233,42 @@ impl MdtClientBuilder {
 impl Default for MdtClientBuilder {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builder_defaults_to_three_threads() {
+        let client = MdtClient::builder().build().unwrap();
+        assert_eq!(client.concurrency(), 3);
+    }
+
+    #[test]
+    fn builder_concurrency_is_clamped_to_at_least_one() {
+        let client = MdtClient::builder().concurrency(0).build().unwrap();
+        assert_eq!(client.concurrency(), 1);
+    }
+
+    #[test]
+    fn builder_concurrency_can_be_overridden() {
+        let client = MdtClient::builder().concurrency(8).build().unwrap();
+        assert_eq!(client.concurrency(), 8);
+    }
+
+    #[test]
+    fn set_concurrency_updates_at_runtime() {
+        let mut client = MdtClient::builder().build().unwrap();
+        client.set_concurrency(6);
+        assert_eq!(client.concurrency(), 6);
+    }
+
+    #[test]
+    fn set_concurrency_clamps_to_at_least_one() {
+        let mut client = MdtClient::builder().build().unwrap();
+        client.set_concurrency(0);
+        assert_eq!(client.concurrency(), 1);
     }
 }

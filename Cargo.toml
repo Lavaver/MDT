@@ -3,7 +3,7 @@ members = ["mdt-macros"]
 
 [package]
 name = "mdt-minecraft"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 description = "Minecraft Download Toolkit - an ergonomic, low-level library for downloading and installing Minecraft versions and mod loaders."
 license = "MIT"
@@ -41,3 +41,4 @@ ratatui = { version = "0.30.2", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0.154"
+wiremock = "0.6"

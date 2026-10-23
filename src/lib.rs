@@ -4,9 +4,9 @@
 //! [![Documentation](https://docs.rs/mdt-minecraft/badge.svg)](https://docs.rs/mdt-minecraft)
 //! [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 //!
-//! An ergonomic, low-level library that downloads and installs Minecraft versions and mod
-//! loaders into a clean, isolated `.minecraft` layout. Build a launcher on top of it in three
-//! lines:
+//! Download and install Minecraft versions and mod loaders into a clean `.minecraft` folder.
+//! It's the plumbing a launcher sits on top of — no UI, no prompts, just typed functions that
+//! return `Result`. Build a launcher in three lines:
 //!
 //! ```no_run
 //! use mdt::{MdtClient, Mirror, ModLoader};
@@ -28,27 +28,25 @@
 //! # Isolation guarantee
 //!
 //! Every loader install lands in `versions/<mc_version>+<Loader><loader_version>` (for example
-//! `versions/1.16.5+Fabric0.20.0`). The vanilla directory `versions/<mc_version>` is never
-//! touched by a loader install, so a broken loader can never corrupt the underlying game.
+//! `versions/1.16.5+Fabric0.20.0`). The vanilla `versions/<mc_version>` folder is never touched,
+//! so a broken loader can't wreck your vanilla game.
 //!
 //! # Errors
 //!
-//! Every fallible operation returns [`Result<T, MdtError>`][std::result::Result], so downstream
-//! launchers can pattern-match on the exact failure (network, checksum mismatch, missing Java,
-//! ...) instead of handling a boxed catch-all. [`MdtError`] is `#[non_exhaustive]`, so match
-//! arms should include a wildcard `_` arm to stay forward-compatible.
+//! Anything that can fail returns a [`Result<T, MdtError>`][std::result::Result], so you can
+//! match on the exact problem (network, checksum, missing Java, ...) instead of a boxed blob.
+//! [`MdtError`] is `#[non_exhaustive]`, so keep a wildcard `_` arm.
 //!
 //! # Mirrors and custom providers
 //!
-//! The download source is chosen with [`Mirror`]: [`Mirror::BMCLAPI`] (the default — a community
-//! mirror that proxies Mojang, Fabric, Forge, NeoForge, and LiteLoader), [`Mirror::Mojang`] (the
-//! official upstream), or [`Mirror::Custom`] — a provider you declare yourself. Every provider's
-//! endpoint URLs and URL-rewrite rules live in `providers.toml`, and the `mdt_macros::providers!`
-//! proc macro compiles them into `&'static` lookup tables at build time, so nothing is read or
-//! parsed at runtime.
+//! Pick a source with [`Mirror`]: [`Mirror::BMCLAPI`] (the default — a community mirror that
+//! proxies Mojang, Fabric, Forge, NeoForge, and LiteLoader), [`Mirror::Mojang`] (official), or
+//! [`Mirror::Custom`] (your own). Endpoints and rewrite rules live in `providers.toml` and get
+//! compiled into static tables by the `mdt_macros::providers!` macro, so nothing is parsed at
+//! runtime.
 //!
-//! To register a custom mirror, add a `[name]` section to `providers.toml`, rebuild, and select it
-//! at runtime:
+//! To add a custom mirror, drop a `[name]` section in `providers.toml`, rebuild, and pick it at
+//! runtime:
 //!
 //! ```no_run
 //! use mdt::{MdtClient, Mirror};
@@ -64,15 +62,15 @@
 //! }
 //! ```
 //!
-//! [`Mirror::provider_name`] returns the active provider's `[name]` key, and failed requests fall
-//! back automatically via [`Mirror::other`] (a custom mirror falls back to `BMCLAPI`). The full
-//! layout is specified in [the TOML spec](https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md)
+//! [`Mirror::provider_name`] returns the active provider's key, and failed requests fall back
+//! automatically via [`Mirror::other`] (a custom mirror falls back to `BMCLAPI`). The format is
+//! spelled out in [the TOML spec](https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md)
 //! and [the endpoint URI spec](https://github.com/Lavaver/MDT/blob/main/docs/mirror_uri.md).
 //!
 //! # Macros
 //!
-//! [`version_dir!`], [`download_task!`], and [`mdt_install!`] provide one-line ergonomic
-//! construction for isolated paths, download tasks, and loader installs.
+//! [`version_dir!`], [`download_task!`], and [`mdt_install!`] are one-line shortcuts for isolated
+//! paths, download tasks, and loader installs.
 
 mod client;
 mod error;

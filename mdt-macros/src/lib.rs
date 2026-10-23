@@ -1,8 +1,7 @@
-//! Proc-macro that compiles `providers.toml` into static provider lookup tables.
+//! Proc-macro that turns `providers.toml` into static lookup tables.
 //!
-//! This is MDT's analogue of `rust-i18n`'s `i18n!`: [`providers!`] reads the crate's
-//! `providers.toml` at compile time and expands to `&'static` endpoint-URL and URL-rewrite
-//! tables, so nothing is parsed at runtime.
+//! Like `rust-i18n`'s `i18n!`: [`providers!`] reads `providers.toml` at compile time and expands
+//! to `&'static` endpoint and rewrite tables, so nothing is parsed at runtime.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};

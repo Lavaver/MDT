@@ -1,19 +1,17 @@
 //! Mod-loader installation.
 //!
-//! Two strategies are used:
+//! Two approaches:
 //!
-//! * **Method A (Java injection)** — download the official installer JAR and run it against a
-//!   local Java runtime, injecting only the isolated version-directory path. Used by modern
-//!   Forge and NeoForge.
-//! * **Method B (manual unpack)** — treat the installer as a ZIP archive, deploy its libraries,
-//!   and synthesize the Minecraft version JSON by hand. No Java required. Used by legacy Forge,
-//!   Fabric, Quilt, and LiteLoader.
+//! * **Method A (Java injection)** — download the official installer and run it with a local
+//!   Java, pointing it at the isolated version dir. Modern Forge and NeoForge.
+//! * **Method B (manual unpack)** — unzip the installer, drop its libraries in place, and write
+//!   the version JSON ourselves. No Java. Legacy Forge, Fabric, Quilt, LiteLoader.
 //!
 //! # Isolation guarantee
 //!
 //! Every loader install lands in `versions/<mc_version>+<Loader><loader_version>` (see
-//! [`loader_version_id`]). The vanilla `versions/<mc_version>` directory is never touched by a
-//! loader install, so a broken loader can never corrupt the underlying game.
+//! [`loader_version_id`]). Vanilla `versions/<mc_version>` is never touched, so a broken loader
+//! can't corrupt the base game.
 
 mod fabric;
 mod forge;

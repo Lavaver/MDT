@@ -1,14 +1,12 @@
-//! Declarative macros for ergonomic construction.
+//! Shorthand macros.
 //!
-//! These are exported at the crate root (via `#[macro_export]`) and are available to downstream
-//! launchers as `mdt::version_dir!`, `mdt::download_task!`, and `mdt::mdt_install!`. All
-//! internal references use `$crate::` so the macros are hygienic when used from other crates.
+//! Exported at the crate root as `mdt::version_dir!`, `mdt::download_task!`, and
+//! `mdt::mdt_install!`. Internal refs use `$crate::` so they're hygienic from other crates.
 
-/// Build the isolated version directory for a loader install.
+/// The isolated version directory for a loader install.
 ///
-/// Expands to `<client.root_dir()>/versions/<mc_version>+<Loader><loader_version>`, enforcing the
-/// isolation convention in a single expression. The loader is passed as a bare variant name
-/// (`Fabric`, `Forge`, `Quilt`, `Neoforge`, `Liteloader`).
+/// Expands to `<client.root_dir()>/versions/<mc_version>+<Loader><loader_version>`. Pass the
+/// loader as a bare variant name (`Fabric`, `Forge`, `Quilt`, `Neoforge`, `Liteloader`).
 ///
 /// ```
 /// use mdt::{version_dir, MdtClient, Mirror};
@@ -37,10 +35,9 @@ macro_rules! version_dir {
     };
 }
 
-/// Construct a [`DownloadTask`][crate::DownloadTask] with minimal ceremony.
+/// A [`DownloadTask`][crate::DownloadTask] in one line.
 ///
-/// `size` defaults to `0` (unknown) and `extract_to` defaults to `None`; both can be supplied
-/// explicitly via the longer forms.
+/// `size` defaults to `0` (unknown) and `extract_to` to `None`; the longer forms set them.
 ///
 /// ```
 /// use mdt::download_task;
@@ -84,8 +81,7 @@ macro_rules! download_task {
 
 /// Install a mod loader in one line.
 ///
-/// A thin, ergonomic wrapper around
-/// [`MdtClient::install_modloader`][crate::MdtClient::install_modloader].
+/// Just a wrapper around [`MdtClient::install_modloader`][crate::MdtClient::install_modloader].
 ///
 /// ```no_run
 /// use mdt::{mdt_install, MdtClient, Mirror, ModLoader};

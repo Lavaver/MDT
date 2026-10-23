@@ -1,22 +1,20 @@
-//! The single, strict error type for the whole crate.
+//! The one error type for the whole crate.
 //!
-//! Every fallible operation in this crate returns [`Result<T, MdtError>`][std::result::Result]
-//! so downstream launchers can pattern-match on the exact failure instead of handling a
-//! catch-all boxed error.
+//! Anything that can fail returns [`Result<T, MdtError>`][std::result::Result], so you can match
+//! on the exact problem instead of a boxed catch-all.
 
 use thiserror::Error;
 
-/// The error type produced by every fallible MDT operation.
+/// The error every MDT call can return.
 ///
-/// Variants fall into two families:
+/// Two kinds of variants:
 ///
-/// * **Transparent passthroughs** (`#[from]`) for foreign error types — network, JSON, XML,
-///   I/O, ZIP, and task joins. These let call sites use `?` directly.
-/// * **Structural failures** produced by MDT itself — version not found, checksum mismatch,
-///   loader incompatibility, and so on.
+/// * **Passthroughs** (`#[from]`) for other libraries' errors — network, JSON, XML, I/O, ZIP,
+///   and task joins. These make `?` work directly.
+/// * **MDT's own failures** — version not found, checksum mismatch, loader incompatibility, etc.
 ///
-/// [`MdtError::context`] wraps any variant with human-readable context, keeping the same
-/// ergonomics as `anyhow` while remaining a strict, matchable enum.
+/// [`MdtError::context`] wraps any variant with extra context, like `anyhow` but still a normal,
+/// matchable enum.
 #[non_exhaustive]
 #[derive(Debug, Error)]
 pub enum MdtError {

@@ -6,3 +6,6 @@
 .idea/*
 
 /target/
+
+# coverage artifacts
+/lcov.info

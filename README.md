@@ -1,10 +1,32 @@
 # MDT — Minecraft Download Toolkit
 
+Download and install Minecraft versions and mod loaders from Rust.
+
 [![Crates.io](https://img.shields.io/crates/v/mdt-minecraft.svg)](https://crates.io/crates/mdt-minecraft)
-[![Documentation](https://docs.rs/mdt-minecraft/badge.svg)](https://docs.rs/mdt-minecraft)
+[![docs.rs](https://docs.rs/mdt-minecraft/badge.svg)](https://docs.rs/mdt-minecraft)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Here is how you build a launcher in three lines.**
+MDT is a small library that fills a `.minecraft` folder for you — vanilla versions, mod
+loaders, libraries, assets. It's the plumbing a launcher sits on top of: no UI, no progress
+bars, no prompts. You call a function, you get a `Result`.
+
+## Features
+
+- Vanilla Minecraft, plus Forge, Fabric, Quilt, NeoForge, and LiteLoader.
+- Isolated installs — each loader lands in its own `versions/<mc>+<Loader><ver>` folder, so a
+  broken loader never touches your vanilla game.
+- SHA-1 verified downloads with automatic mirror fallback when a source is slow or blocked.
+- Custom mirrors via a `providers.toml` you can edit (compiled in at build time).
+- No terminal dependencies in the core; `cli` and `tui` are opt-in features.
+
+## Install
+
+```toml
+[dependencies]
+mdt-minecraft = "0.4"
+```
+
+## Quick start
 
 ```rust
 use mdt::{MdtClient, Mirror, ModLoader, mdt_install};
@@ -16,52 +38,53 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .root_dir("./.minecraft")
         .build()?;
 
-    client.install_vanilla("1.20.1").await?;                                    // vanilla
-    mdt_install!(client, "1.20.1", ModLoader::Fabric, "0.15.11").await?;        // Fabric
+    client.install_vanilla("1.20.1").await?;                                   // vanilla
+    mdt_install!(client, "1.20.1", ModLoader::Fabric, "0.15.11").await?;       // Fabric
 
     Ok(())
 }
 ```
 
-MDT is a low-level, ergonomic **library** for downloading and installing Minecraft versions and
-mod loaders. It is the dirt-handling layer a launcher sits on top of: no TUI, no progress bars,
-no user input — just a strict, typed API that returns real errors.
+## Isolation
 
-## Isolation guarantee
-
-Every loader install lands in its own directory named after the convention
-`<mc_version>+<Loader><loader_version>`:
+Each loader install goes into its own directory, separate from the vanilla version:
 
 ```
 .minecraft/
 └── versions/
     ├── 1.20.1/                  # vanilla — never touched by a loader install
-    │   ├── 1.20.1.json
-    │   └── 1.20.1.jar
-    └── 1.20.1+Fabric0.15.11/    # isolated loader install
-        └── 1.20.1+Fabric0.15.11.json
+    └── 1.20.1+Fabric0.15.11/    # isolated Fabric install
 ```
 
-A broken loader can never corrupt the vanilla game. You don't have to write a single line of
-code to enforce this — the library does it for you.
+You don't have to enforce this yourself — the library does it.
 
-## Macros
+## Mirrors
 
-```rust
-use mdt::{version_dir, download_task};
+| Variant                  | What it is                                                                       |
+|--------------------------|----------------------------------------------------------------------------------|
+| `Mirror::BMCLAPI`        | Community mirror (default). Proxies Mojang, Fabric, Forge, NeoForge, LiteLoader. |
+| `Mirror::Mojang`         | Official servers.                                                                |
+| `Mirror::Custom("name")` | Your own provider, declared as `[name]` in `providers.toml`.                     |
 
-// One expression for the isolated version path (loader as a bare variant name).
-let dir = version_dir!(client, "1.16.5", Fabric, "0.20.0");
-// → <root>/versions/1.16.5+Fabric0.20.0
+Failed requests fall back to the opposite mirror automatically (custom mirrors fall back to
+`BMCLAPI`). Endpoints and rewrite rules live in [`providers.toml`](providers.toml) — see
+[docs/mirror_toml.md](docs/mirror_toml.md) and [docs/mirror_uri.md](docs/mirror_uri.md).
 
-// One expression for a download task (size defaults to 0, extract_to to None).
-let task = download_task!("https://…/lib.jar", "libraries/lib.jar", "abc123", 42);
-```
+## Loaders
+
+| Loader                  | Method                  | Notes                                        |
+|-------------------------|-------------------------|----------------------------------------------|
+| `ModLoader::Forge`      | A (1.13+) / B (1.12.2-) | Official installer + Java, or manual unpack. |
+| `ModLoader::Neoforge`   | A                       | Official installer + Java.                   |
+| `ModLoader::Fabric`     | B                       | No Java needed.                              |
+| `ModLoader::Quilt`      | B                       | No Java needed.                              |
+| `ModLoader::Liteloader` | B                       | 1.12.2 and earlier.                          |
+
+Method A needs a local Java runtime (`JAVA_HOME` or `java` on `PATH`).
 
 ## Errors
 
-Every fallible operation returns `Result<T, MdtError>`. Match on it directly (the enum is
-`#[non_exhaustive]`, so keep a wildcard `_` arm):
+Every fallible call returns `Result<T, MdtError>`, so you can match on exactly what went wrong:
 
 ```rust
 match client.install_modloader("1.20.1", ModLoader::Forge, "47.2.0").await {
@@ -74,72 +97,37 @@ match client.install_modloader("1.20.1", ModLoader::Forge, "47.2.0").await {
 }
 ```
 
-## Mirrors
+## Macros
 
-| Variant                  | Description                                                                      |
-|--------------------------|----------------------------------------------------------------------------------|
-| `Mirror::BMCLAPI`        | Community mirror (default). Proxies Mojang, Fabric, Forge, NeoForge, LiteLoader. |
-| `Mirror::Mojang`         | Official upstream.                                                               |
-| `Mirror::Custom("name")` | A custom provider declared as a `[name]` section in `providers.toml`.            |
+A few one-liners for common things:
 
-Failed requests automatically fall back to the opposite mirror (a custom mirror falls back to
-`BMCLAPI`). Endpoint URLs and URL-rewrite rules are declared in `providers.toml` and compiled
-into static tables at build time — see [docs/mirror_toml.md](docs/mirror_toml.md) for the TOML
-layout and [docs/mirror_uri.md](docs/mirror_uri.md) for the endpoint spec.
+```rust
+use mdt::{version_dir, download_task};
 
-## Loaders
-
-| Loader                  | Method                  | Notes                                        |
-|-------------------------|-------------------------|----------------------------------------------|
-| `ModLoader::Forge`      | A (1.13+) / B (1.12.2-) | Official installer + Java, or manual unpack. |
-| `ModLoader::Neoforge`   | A                       | Official installer + Java.                   |
-| `ModLoader::Fabric`     | B                       | Profile-based, no Java required.             |
-| `ModLoader::Quilt`      | B                       | Profile-based, no Java required.             |
-| `ModLoader::Liteloader` | B                       | 1.12.2 and earlier only.                     |
-
-Method **A** requires a local Java runtime (`JAVA_HOME` or `java` on `PATH`).
+let dir  = version_dir!(client, "1.16.5", Fabric, "0.20.0");  // <root>/versions/1.16.5+Fabric0.20.0
+let task = download_task!("https://…/lib.jar", "libraries/lib.jar", "abc123", 42);
+```
 
 ## Feature flags
 
-The core library is **100% terminal-agnostic**. Terminal UI and CLI parsing are strictly
-feature-gated, so `crossterm`, `ratatui`, and `clap` are never compiled unless requested:
+The core library has no terminal dependencies by default:
 
 ```toml
-mdt = { version = "0.4", features = ["cli"] }   # CLI + TUI
-mdt = { version = "0.4", features = ["tui"] }   # TUI only
-mdt = "0.4"                                     # library only (no terminal deps)
+mdt-minecraft = "0.4"                                              # library only
+mdt-minecraft = { version = "0.4", features = ["tui"] }            # + TUI
+mdt-minecraft = { version = "0.4", features = ["cli"] }            # + CLI and TUI
 ```
+
+## Docs
+
+- [docs.rs/mdt-minecraft](https://docs.rs/mdt-minecraft)
+- [Mirror TOML format](docs/mirror_toml.md)
+- [Mirror URI spec](docs/mirror_uri.md)
 
 ## Changelog
 
-### v0.4.0 — custom mirror providers
-
-Mirror endpoints and URL-rewrite rules are no longer hard-coded. They now live in
-`providers.toml` and are compiled into `&'static` lookup tables at build time by the
-`mdt-macros::providers!` proc macro (the MDT analogue of `rust-i18n`'s `i18n!`), so nothing is
-parsed at runtime.
-
-- **Custom mirrors** — `Mirror::Custom("name")` selects a `[name]` section from `providers.toml`,
-  with its own endpoint URLs and ordered `mirror` / `maven` rewrite rules (and a
-  `maven_exclude` list). Add a section, rebuild, and select it at runtime.
-- **Fallible endpoint lookup** — `ManifestUrls::new` is split into `try_new` (returns
-  `MdtError::UnknownProvider` for an undeclared name) and `new` (panics).
-- **New error variant** — `MdtError::UnknownProvider`.
-- **Breaking** — `Mirror` is now `Clone` (not `Copy`), and every `Mirror` parameter is passed by
-  reference (`&Mirror`). Update call sites like `client.mirror()` and
-  `ManifestUrls::new(mirror)` accordingly.
-- **New docs** — [docs/mirror_toml.md](docs/mirror_toml.md) (TOML layout) and
-  [docs/mirror_uri.md](docs/mirror_uri.md) (endpoint URI spec).
-- **Workspace** — `Cargo.toml` is now a workspace; `mdt-macros` is a new member crate.
-
-### v0.3.1
-
-Added the README badge and upgraded Tokio.
-
-### v0.3.0
-
-Initial release of MDT as an ergonomic library.
+See [CHANGELOG.md](CHANGELOG.md) and the [releases](https://github.com/Lavaver/MDT/releases) page.
 
 ## License
 
-MIT
+[MIT](LICENSE)

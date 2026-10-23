@@ -1,10 +1,10 @@
 //! Download mirror sources.
 
-/// The upstream mirror from which game files and metadata are downloaded.
+/// Where game files and metadata come from.
 ///
-/// [`Mirror::BMCLAPI`] is the default and is generally faster for users in mainland
-/// China; [`Mirror::Mojang`] is the official upstream. When a request against the
-/// active mirror fails, MDT automatically retries against [`Mirror::other`].
+/// [`Mirror::BMCLAPI`] is the default and usually faster in mainland China; [`Mirror::Mojang`]
+/// is the official source. When a request against the active mirror fails, MDT retries against
+/// [`Mirror::other`].
 #[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Mirror {
@@ -16,7 +16,7 @@ pub enum Mirror {
     /// A custom mirror provider, keyed by its `[provider_name]` section in `providers.toml`.
     ///
     /// The name must match a section compiled in at build time — see the
-    /// [TOML specification](/docs/mirror_toml.md).
+    /// [TOML spec](/docs/mirror_toml.md).
     Custom(String),
 }
 
@@ -32,14 +32,14 @@ impl Mirror {
         }
     }
 
-    /// The name of this mirror's provider, as declared in `providers.toml`.
+    /// The provider name from `providers.toml`.
     ///
-    /// The name is the `[provider_name]` key used to look up the provider's endpoint URLs and
-    /// rewrite rules (see [`crate::urls::ManifestUrls`]). Built-in providers return `"mojang"`
-    /// and `"bmclapi"`; [`Mirror::Custom`] returns its own name.
+    /// Used to look up that provider's endpoints and rewrite rules (see
+    /// [`crate::urls::ManifestUrls`]). Built-ins return `"mojang"` / `"bmclapi"`;
+    /// [`Mirror::Custom`] returns its own name.
     ///
-    /// - For the URI specification for providers, see [this document](https://github.com/Lavaver/MDT/blob/main/docs/mirror_uri.md).
-    /// - For the TOML specification for providers, see [this document](https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md).
+    /// - URI spec: <https://github.com/Lavaver/MDT/blob/main/docs/mirror_uri.md>
+    /// - TOML spec: <https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md>
     #[must_use]
     pub fn provider_name(&self) -> &str {
         match self {

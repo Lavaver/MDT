@@ -10,12 +10,27 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 /// Build the shared HTTP client used by [`crate::MdtClient`].
 ///
-/// The returned client is cheap to clone (it is backed by an `Arc` internally) and reuses a
-/// single connection pool across every concurrent download task, avoiding per-file TLS
-/// handshakes.
+/// Cheap to clone (`Arc` under the hood) and reuses one connection pool across all downloads,
+/// so you're not doing a TLS handshake per file.
 pub fn build_client() -> Result<reqwest::Client, MdtError> {
     Ok(reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .pool_idle_timeout(Duration::from_secs(90))
         .build()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_client_succeeds() {
+        let _client = build_client().unwrap();
+    }
+
+    #[test]
+    fn user_agent_is_browser_like() {
+        assert!(USER_AGENT.contains("Mozilla"), "missing Mozilla token");
+        assert!(USER_AGENT.contains("Chrome"), "missing Chrome token");
+    }
 }
