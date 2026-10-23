@@ -38,6 +38,37 @@
 //! ...) instead of handling a boxed catch-all. [`MdtError`] is `#[non_exhaustive]`, so match
 //! arms should include a wildcard `_` arm to stay forward-compatible.
 //!
+//! # Mirrors and custom providers
+//!
+//! The download source is chosen with [`Mirror`]: [`Mirror::BMCLAPI`] (the default — a community
+//! mirror that proxies Mojang, Fabric, Forge, NeoForge, and LiteLoader), [`Mirror::Mojang`] (the
+//! official upstream), or [`Mirror::Custom`] — a provider you declare yourself. Every provider's
+//! endpoint URLs and URL-rewrite rules live in `providers.toml`, and the `mdt_macros::providers!`
+//! proc macro compiles them into `&'static` lookup tables at build time, so nothing is read or
+//! parsed at runtime.
+//!
+//! To register a custom mirror, add a `[name]` section to `providers.toml`, rebuild, and select it
+//! at runtime:
+//!
+//! ```no_run
+//! use mdt::{MdtClient, Mirror};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = MdtClient::builder()
+//!         .mirror(Mirror::Custom("my_mirror".into()))
+//!         .root_dir("./.minecraft")
+//!         .build()?;
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! [`Mirror::provider_name`] returns the active provider's `[name]` key, and failed requests fall
+//! back automatically via [`Mirror::other`] (a custom mirror falls back to `BMCLAPI`). The full
+//! layout is specified in [the TOML spec](https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md)
+//! and [the endpoint URI spec](https://github.com/Lavaver/MDT/blob/main/docs/mirror_uri.md).
+//!
 //! # Macros
 //!
 //! [`version_dir!`], [`download_task!`], and [`mdt_install!`] provide one-line ergonomic

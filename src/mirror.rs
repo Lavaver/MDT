@@ -38,8 +38,8 @@ impl Mirror {
     /// rewrite rules (see [`crate::urls::ManifestUrls`]). Built-in providers return `"mojang"`
     /// and `"bmclapi"`; [`Mirror::Custom`] returns its own name.
     ///
-    /// - For the URI specification for providers, see [this document](/docs/mirror_uri.md).
-    /// - For the TOML specification for providers, see [this document](/docs/mirror_toml.md).
+    /// - For the URI specification for providers, see [this document](https://github.com/Lavaver/MDT/blob/main/docs/mirror_uri.md).
+    /// - For the TOML specification for providers, see [this document](https://github.com/Lavaver/MDT/blob/main/docs/mirror_toml.md).
     #[must_use]
     pub fn provider_name(&self) -> &str {
         match self {
