@@ -130,6 +130,9 @@ pub fn apply_mirror_to_json(
 // ===== shared deploy logic =====
 
 /// Download a single library by Maven coordinate into `libraries/`, skipping if present.
+///
+/// `by` is an optional attribution for progress output (e.g. `Fabric 0.20.0`); when set, a
+/// `Downloaded <file> by <by>` line is printed after the file lands.
 pub async fn download_library(
     http: &reqwest::Client,
     name: &str,
@@ -137,6 +140,7 @@ pub async fn download_library(
     root: &Path,
     mirror: &Mirror,
     urls: &ManifestUrls,
+    by: Option<&str>,
 ) -> Result<(), MdtError> {
     let rel = library_path_from_name(name)?;
     let dest = libraries_dir(root).join(&rel);
@@ -146,7 +150,12 @@ pub async fn download_library(
     }
     let upstream = format!("{}/{}", base_url.trim_end_matches('/'), rel);
     eprintln!("[mdt] download_library: {name} from {upstream}");
-    download_maven_fallback(http, &upstream, &dest, mirror, urls).await
+    download_maven_fallback(http, &upstream, &dest, mirror, urls).await?;
+    if let Some(by) = by {
+        let file_name = rel.rsplit('/').next().unwrap_or(rel.as_str());
+        eprintln!("Downloaded {file_name} by {by}");
+    }
+    Ok(())
 }
 
 /// Fetch a loader profile JSON, trying each candidate URL in order and returning the first success
@@ -211,6 +220,7 @@ pub async fn install_from_profile(
         .cloned()
         .ok_or_else(|| MdtError::InvalidManifest("loader profile is missing a `libraries` array".to_string()))?;
 
+    let by = format!("{} {}", req.loader.display_name(), req.loader_version);
     for lib in &libs {
         let name = lib
             .get("name")
@@ -221,7 +231,7 @@ pub async fn install_from_profile(
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| MdtError::InvalidManifest("loader profile library is missing `url`".to_string()))?;
-        download_library(http, name, base, &req.root_dir, &req.mirror, urls).await?;
+        download_library(http, name, base, &req.root_dir, &req.mirror, urls, Some(&by)).await?;
     }
 
     let profile = apply_mirror_to_json(profile, &req.mirror, urls);

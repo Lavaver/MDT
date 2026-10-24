@@ -4,9 +4,12 @@
 //! manifest SHA-1, applies mirror rewriting, filters library rules, and extracts natives.
 
 use std::collections::HashMap;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use futures::stream::{self, StreamExt};
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -96,6 +99,10 @@ pub struct DownloadTask {
     pub size: u64,
     /// If set, the downloaded archive is extracted here (used for natives).
     pub extract_to: Option<PathBuf>,
+    /// Friendly file name for progress output, e.g. `client.jar`.
+    pub label: Option<String>,
+    /// Attribution for progress output, e.g. `Minecraft 1.16.5`.
+    pub by: Option<String>,
 }
 
 // ===== 3. rule evaluation =====
@@ -154,7 +161,9 @@ fn evaluate_rules(rules: &Option<Vec<Rule>>) -> bool {
 
 /// Execute a batch of download tasks concurrently, verifying each against its SHA-1.
 ///
-/// An empty task queue is treated as an error rather than a silent success.
+/// An empty task queue is treated as an error rather than a silent success. Progress is printed to
+/// stderr as a bottom-pinned, Cargo-style `Downloading x/y Component(s) ...` line (updated in place
+/// with `\r` when stderr is a terminal; plain lines otherwise).
 pub async fn execute_downloads(
     http: &reqwest::Client,
     tasks: Vec<DownloadTask>,
@@ -169,19 +178,121 @@ pub async fn execute_downloads(
     }
 
     let concurrency = concurrency.max(1);
-    let results = stream::iter(
-        tasks
-            .into_iter()
-            .map(|task| download_single_file(task, mirror, urls, http)),
-    )
+    let progress = Arc::new(Progress::new(tasks.len()));
+
+    let results = stream::iter(tasks.into_iter().map(|task| {
+        let progress = Arc::clone(&progress);
+        let label = task.label.clone();
+        let by = task.by.clone();
+        download_single_file(task, mirror, urls, http).map(move |res| {
+            let downloaded = matches!(&res, Ok(true));
+            progress.complete(downloaded, label.as_deref(), by.as_deref());
+            res
+        })
+    }))
     .buffer_unordered(concurrency)
     .collect::<Vec<_>>()
     .await;
+
+    progress.finish();
 
     for res in results {
         res?;
     }
     Ok(())
+}
+
+/// A bottom-pinned, throttled progress line for [`execute_downloads`].
+///
+/// All stderr writes for a batch are serialized behind one mutex, so concurrent tasks never
+/// interleave. When stderr is a terminal the `Downloading x/y ...` line is rewritten in place with
+/// `\r` and `Downloaded ...` status lines are printed above it; otherwise every update is a plain
+/// line so redirected output stays readable.
+struct Progress {
+    total: usize,
+    report_every: usize,
+    interactive: bool,
+    inner: Mutex<ProgressInner>,
+}
+
+struct ProgressInner {
+    done: usize,
+    next_report: usize,
+    line: String,
+}
+
+impl Progress {
+    fn new(total: usize) -> Self {
+        let report_every = (total / 10).max(1);
+        let interactive = std::io::stderr().is_terminal();
+        let line = format!("Downloading 0/{total} Component(s) ...");
+        if interactive {
+            eprint!("{line}");
+        } else {
+            eprintln!("{line}");
+        }
+        Progress {
+            total,
+            report_every,
+            interactive,
+            inner: Mutex::new(ProgressInner {
+                done: 0,
+                next_report: report_every,
+                line,
+            }),
+        }
+    }
+
+    /// Record one finished task; optionally print a `Downloaded ...` status line above the pinned
+    /// progress line.
+    fn complete(&self, downloaded: bool, label: Option<&str>, by: Option<&str>) {
+        let mut inner = self.inner.lock().unwrap();
+        inner.done += 1;
+        let done = inner.done;
+        let report = done >= inner.next_report || done == self.total;
+        if report {
+            inner.next_report = done + self.report_every;
+            inner.line = format!("Downloading {done}/{} Component(s) ...", self.total);
+        }
+
+        let status = match (downloaded, label, by) {
+            (true, Some(label), Some(by)) => Some(format!("Downloaded {label} by {by}")),
+            _ => None,
+        };
+
+        match status {
+            Some(status) => {
+                if self.interactive {
+                    // Erase the pinned line, print the status line, then re-render the pinned line
+                    // below it so it stays at the bottom.
+                    let width = inner.line.chars().count();
+                    eprint!("\r{}\r{status}\n{}", " ".repeat(width), inner.line);
+                } else {
+                    eprintln!("{status}");
+                    if report {
+                        eprintln!("{}", inner.line);
+                    }
+                }
+            }
+            None => {
+                if report {
+                    if self.interactive {
+                        eprint!("\r{}", inner.line);
+                    } else {
+                        eprintln!("{}", inner.line);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Terminate the pinned line with a newline so later output starts on a fresh line.
+    fn finish(&self) {
+        if self.interactive {
+            let _guard = self.inner.lock().unwrap();
+            eprintln!();
+        }
+    }
 }
 
 /// Stream a file in chunks and compute its SHA-1, avoiding loading the whole file into memory.
@@ -302,13 +413,13 @@ async fn download_from_url(
 }
 
 /// Download a single file, skipping if it already exists with a matching SHA-1, then extract
-/// natives when requested.
+/// natives when requested. Returns `true` when a fresh copy was actually downloaded.
 async fn download_single_file(
     task: DownloadTask,
     mirror: &Mirror,
     urls: &ManifestUrls,
     http: &reqwest::Client,
-) -> Result<(), MdtError> {
+) -> Result<bool, MdtError> {
     // 1. Pre-check: skip if the file already exists and its SHA-1 matches.
     let mut need_download = true;
     if task.dest_path.exists() {
@@ -361,14 +472,20 @@ async fn download_single_file(
         .await??;
     }
 
-    Ok(())
+    Ok(need_download)
 }
 
 // ===== 5. task generators =====
 
+/// The last path component of a Maven-relative path (e.g. `a/b/lib.jar` → `lib.jar`).
+fn maven_file_name(path: &str) -> &str {
+    path.rsplit('/').next().unwrap_or(path)
+}
+
 /// Build download tasks from a parsed version JSON (client JAR, libraries, asset index).
 pub fn build_tasks_from_version_json(version_json: &VersionJson, root_dir: &Path) -> Vec<DownloadTask> {
     let mut tasks = Vec::new();
+    let by = format!("Minecraft {}", version_json.id);
 
     // 1. client.jar
     if let Some(downloads) = &version_json.downloads {
@@ -382,6 +499,8 @@ pub fn build_tasks_from_version_json(version_json: &VersionJson, root_dir: &Path
                 sha1: client.sha1.clone(),
                 size: client.size,
                 extract_to: None,
+                label: Some("client.jar".to_string()),
+                by: Some(by.clone()),
             });
         }
     }
@@ -406,6 +525,8 @@ pub fn build_tasks_from_version_json(version_json: &VersionJson, root_dir: &Path
                     sha1: artifact.sha1.clone(),
                     size: artifact.size,
                     extract_to: None,
+                    label: Some(maven_file_name(path).to_string()),
+                    by: Some(by.clone()),
                 });
             }
         }
@@ -431,6 +552,8 @@ pub fn build_tasks_from_version_json(version_json: &VersionJson, root_dir: &Path
                         sha1: art.sha1.clone(),
                         size: art.size,
                         extract_to: Some(natives_dir.clone()),
+                        label: Some(maven_file_name(path).to_string()),
+                        by: Some(by.clone()),
                     });
                 }
             }
@@ -448,6 +571,8 @@ pub fn build_tasks_from_version_json(version_json: &VersionJson, root_dir: &Path
             sha1: asset_index.sha1.clone(),
             size: asset_index.size,
             extract_to: None,
+            label: Some(format!("{}.json", asset_index.id)),
+            by: Some(by.clone()),
         });
     }
 
@@ -471,6 +596,9 @@ pub fn build_tasks_from_asset_index(asset_index: &AssetIndex, root_dir: &Path) -
                 sha1: object.hash.clone(),
                 size: object.size,
                 extract_to: None,
+                // Assets are numerous; count them in the progress bar but skip per-file lines.
+                label: None,
+                by: None,
             }
         })
         .collect()
@@ -512,6 +640,8 @@ mod tests {
             sha1: sha1_hex(content),
             size: content.len() as u64,
             extract_to: None,
+            label: None,
+            by: None,
         }
     }
 

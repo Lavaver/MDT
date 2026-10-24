@@ -32,6 +32,7 @@ pub async fn install(
     let official = format!("{}/{}", ManifestUrls::try_new(&Mirror::Mojang)?.liteloader_base, file);
     let candidates = dedup_urls(&[mirrored.clone(), official]);
     download_to_file_from_candidates(http, &candidates, &liteloader_dest).await?;
+    eprintln!("Downloaded liteloader-{}.jar by LiteLoader {}", req.loader_version, req.loader_version);
 
     // 2. Download LaunchWrapper and ASM (required at runtime).
     download_library(
@@ -41,6 +42,7 @@ pub async fn install(
         &req.root_dir,
         &req.mirror,
         &urls,
+        None,
     )
     .await?;
     download_library(
@@ -50,6 +52,7 @@ pub async fn install(
         &req.root_dir,
         &req.mirror,
         &urls,
+        None,
     )
     .await?;
 

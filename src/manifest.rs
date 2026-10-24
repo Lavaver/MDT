@@ -157,6 +157,7 @@ pub async fn fetch_minecraft_version_manifest(
     http: &reqwest::Client,
     mirror: &Mirror,
 ) -> Result<MinecraftVersionsList, MdtError> {
+    eprintln!("Updating {} index", mirror.label());
     let primary = ManifestUrls::try_new(mirror)?;
     let fallback = ManifestUrls::try_new(&mirror.other())?;
     let candidates = [primary.minecraft.as_str(), fallback.minecraft.as_str()];

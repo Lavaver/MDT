@@ -57,6 +57,8 @@ macro_rules! download_task {
             sha1: $sha1.into(),
             size: 0,
             extract_to: None,
+            label: None,
+            by: None,
         }
     };
     ($url:expr, $dest:expr, $sha1:expr, $size:expr $(,)?) => {
@@ -66,6 +68,8 @@ macro_rules! download_task {
             sha1: $sha1.into(),
             size: $size,
             extract_to: None,
+            label: None,
+            by: None,
         }
     };
     ($url:expr, $dest:expr, $sha1:expr, $size:expr, extract_to = $extract:expr $(,)?) => {
@@ -75,6 +79,8 @@ macro_rules! download_task {
             sha1: $sha1.into(),
             size: $size,
             extract_to: Some(::std::path::PathBuf::from($extract)),
+            label: None,
+            by: None,
         }
     };
 }

@@ -97,6 +97,8 @@ async fn execute_restore(
             sha1: entry.sha1.clone(),
             size: entry.size,
             extract_to: None,
+            label: entry.path.file_name().and_then(|n| n.to_str()).map(str::to_string),
+            by: None,
         })
         .collect();
 

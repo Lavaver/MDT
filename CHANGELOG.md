@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3] | Feature Update: We made a minor tweak to the terminal experience
+
+- **Cargo-style progress** — installs and downloads now print friendly status lines to stderr:
+  `Updating <source> index`, `Downloaded <file> by <Minecraft/Loader> <version>`, and a throttled
+  `Downloading x/y Component(s) ...` tracker that stays pinned to the bottom of the terminal
+  (rewritten in place with `\r` on a TTY). `stdout` stays clean for downstream launchers.
+
 ## [0.5.2] | hotfix patch 2: don't kill slow downloads (lol)
 
 0.5.1 was yanked: the global 30s *total* request timeout aborted large-but-healthy downloads

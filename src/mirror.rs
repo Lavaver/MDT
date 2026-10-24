@@ -48,4 +48,14 @@ impl Mirror {
             Mirror::Custom(name) => name.as_str(),
         }
     }
+
+    /// A human-friendly label for progress output, e.g. `Mojang` or `BMCLAPI`.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        match self {
+            Mirror::Mojang => "Mojang",
+            Mirror::BMCLAPI => "BMCLAPI",
+            Mirror::Custom(name) => name.as_str(),
+        }
+    }
 }
