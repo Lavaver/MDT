@@ -13,14 +13,16 @@ const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 /// Cheap to clone (`Arc` under the hood) and reuses one connection pool across all downloads,
 /// so you're not doing a TLS handshake per file.
 ///
-/// Every request carries a hard timeout so a stalled mirror can't hang the caller forever: the
-/// connect phase is capped at 15s and the whole request (headers + body) at 30s.
+/// Timeouts protect against a stalled mirror without killing slow-but-healthy downloads: the
+/// connect phase is capped at 15s, and a read timeout of 30s aborts only when no bytes arrive for
+/// 30s (it resets after every successful read). There is deliberately no *total* request timeout,
+/// since large files legitimately take longer than any fixed wall-clock bound.
 pub fn build_client() -> Result<reqwest::Client, MdtError> {
     Ok(reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .pool_idle_timeout(Duration::from_secs(90))
         .connect_timeout(Duration::from_secs(15))
-        .timeout(Duration::from_secs(30))
+        .read_timeout(Duration::from_secs(30))
         .build()?)
 }
 

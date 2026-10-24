@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.2] | hotfix patch 2: don't kill slow downloads (lol)
+
+0.5.1 was yanked: the global 30s *total* request timeout aborted large-but-healthy downloads
+(client.jar, assets) mid-stream. The client now uses a 15s connect timeout plus a 30s *read*
+timeout (which resets as bytes arrive), so slow downloads survive while a stalled mirror still
+times out. Small metadata fetches (manifests, loader profiles) get a strict 15s per-request
+timeout.
+
+## [0.5.1] | hotfix patch 1: We're happy to tell you that we've written a bug :D
+
+0.5.0 was yanked: Fix Modloader Installation Deadlock & Add Resilient Network Fallbacks
+
 ## [0.5.0] | Modloader (Un)Install Mechanism Update
 
 - **Uninstall** — `MdtClient::uninstall_modloader` reverts a loader back to pure vanilla using a

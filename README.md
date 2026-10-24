@@ -24,7 +24,7 @@ bars, no prompts. You call a function, you get a `Result`.
 
 ```toml
 [dependencies]
-mdt-minecraft = "0.4"
+mdt-minecraft = "0.5.2"
 ```
 
 ## Quick start
@@ -71,6 +71,7 @@ Each loader install goes into its own directory, separate from the vanilla versi
     ├── 1.20.1/                  # vanilla — never touched by a loader install
     └── 1.20.1+Fabric0.15.11/    # isolated Fabric install
 ```
+
 
 You don't have to enforce this yourself — the library does it.
 
@@ -157,9 +158,9 @@ Under the hood `full_install!(client, "1.20.1", loader, "ver")` expands to
 The core library has no terminal dependencies by default:
 
 ```toml
-mdt-minecraft = "0.4"                                              # library only
-mdt-minecraft = { version = "0.4", features = ["tui"] }            # + TUI
-mdt-minecraft = { version = "0.4", features = ["cli"] }            # + CLI and TUI
+mdt-minecraft = "0.5.2"                                              # library only
+mdt-minecraft = { version = "0.5.2", features = ["tui"] }            # + TUI
+mdt-minecraft = { version = "0.5.2", features = ["cli"] }            # + CLI and TUI
 ```
 
 ## Docs

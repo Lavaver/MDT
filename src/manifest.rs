@@ -1,6 +1,7 @@
 //! Version-manifest types and fetch logic for Minecraft and its mod loaders.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -126,7 +127,12 @@ struct BmclapiLiteLoaderItem {
 // ===== fetching =====
 
 async fn get_text(http: &reqwest::Client, url: &str) -> Result<String, MdtError> {
-    let resp = http.get(url).send().await?.error_for_status()?;
+    let resp = http
+        .get(url)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?
+        .error_for_status()?;
     Ok(resp.text().await?)
 }
 
@@ -179,6 +185,7 @@ pub async fn fetch_version_json(
     let version_url = urls.apply_mirror(&entry.url, mirror);
     let text = http
         .get(&version_url)
+        .timeout(Duration::from_secs(15))
         .send()
         .await?
         .error_for_status()?
