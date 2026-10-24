@@ -5,16 +5,21 @@
 //! the profile and Maven URLs fall back to the official Quilt servers (BMCLAPI does not proxy them).
 
 use crate::error::MdtError;
+use crate::mirror::Mirror;
 use crate::urls::ManifestUrls;
 
 use super::version_json::install_from_profile;
-use super::{InstallRequest, InstalledVersion};
+use super::{dedup_urls, InstallRequest, InstalledVersion};
 
 pub async fn install(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
     let urls = ManifestUrls::try_new(&req.mirror)?;
-    let profile_url = urls.quilt_profile_url(&req.loader_version, &req.mc_version, &req.mirror);
-    install_from_profile(http, &profile_url, &req, &urls).await
+    let mirrored = urls.quilt_profile_url(&req.loader_version, &req.mc_version, &req.mirror);
+    // Mirror first, official as fallback.
+    let official =
+        ManifestUrls::try_new(&Mirror::Mojang)?.quilt_profile(&req.loader_version, &req.mc_version);
+    let candidates = dedup_urls(&[mirrored, official]);
+    install_from_profile(http, &candidates, &req, &urls).await
 }

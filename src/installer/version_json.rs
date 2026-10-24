@@ -13,7 +13,7 @@ use crate::modloader::ModLoader;
 use crate::urls::ManifestUrls;
 
 use super::{
-    download_to_file, ensure_empty_dir, libraries_dir, library_path_from_name,
+    download_maven_fallback, ensure_empty_dir, libraries_dir, library_path_from_name,
     loader_version_id, target_version_dir, unzip_jar, version_dir, InstallMethod, InstallRequest,
     InstalledVersion,
 };
@@ -140,25 +140,57 @@ pub async fn download_library(
     let rel = library_path_from_name(name)?;
     let dest = libraries_dir(root).join(&rel);
     if dest.exists() {
+        eprintln!("[mdt] download_library: {name} already present, skipping");
         return Ok(());
     }
-    let base = urls.apply_maven_mirror(base_url, mirror);
-    let base = base.trim_end_matches('/');
-    let full_url = format!("{base}/{rel}");
-    download_to_file(http, &full_url, &dest).await
+    let upstream = format!("{}/{}", base_url.trim_end_matches('/'), rel);
+    eprintln!("[mdt] download_library: {name} from {upstream}");
+    download_maven_fallback(http, &upstream, &dest, mirror, urls).await
+}
+
+/// Fetch a loader profile JSON, trying each candidate URL in order and returning the first success
+/// together with the URL that served it.
+async fn fetch_profile_json(
+    http: &reqwest::Client,
+    candidates: &[String],
+) -> Result<(String, String), MdtError> {
+    let mut last_err = None;
+    for url in candidates {
+        eprintln!("[mdt] install_from_profile: fetching {url}");
+        let result = async {
+            let resp = http.get(url).send().await?.error_for_status()?;
+            Ok::<_, MdtError>(resp.text().await?)
+        }
+        .await;
+        match result {
+            Ok(text) => {
+                eprintln!("[mdt] install_from_profile: profile body read ({} bytes)", text.len());
+                return Ok((text, url.clone()));
+            }
+            Err(e) => {
+                eprintln!("[mdt] install_from_profile: {url} failed, trying next: {e}");
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        MdtError::InvalidManifest("no reachable loader profile source".to_string())
+    }))
 }
 
 /// Method B entry point for profile-based loaders (Fabric / Quilt).
+///
+/// `profile_urls` is ordered mirror-first, official-last; the first URL that returns a parseable
+/// profile wins, so a stalled mirror falls through to the official source.
 pub async fn install_from_profile(
     http: &reqwest::Client,
-    profile_url: &str,
+    profile_urls: &[String],
     req: &InstallRequest,
     urls: &ManifestUrls,
 ) -> Result<InstalledVersion, MdtError> {
-    let resp = http.get(profile_url).send().await?.error_for_status()?;
-    let text = resp.text().await?;
+    let (text, used_url) = fetch_profile_json(http, profile_urls).await?;
     let mut profile: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
-        MdtError::JsonParseError(e).context(format!("parsing loader profile {profile_url}"))
+        MdtError::JsonParseError(e).context(format!("parsing loader profile {used_url}"))
     })?;
 
     // Enforce the isolation convention: override the profile's own `id` so the loader lands in
@@ -215,8 +247,7 @@ pub async fn install_legacy_forge(
     ensure_empty_dir(&temp).await?;
 
     let installer_jar = temp.join("installer.jar");
-    let real_url = urls.apply_maven_mirror(installer_url, mirror);
-    download_to_file(http, &real_url, &installer_jar).await?;
+    download_maven_fallback(http, installer_url, &installer_jar, mirror, urls).await?;
 
     let unpack = temp.join("unpack");
     unzip_jar(&installer_jar, &unpack).await?;

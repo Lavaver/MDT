@@ -15,6 +15,9 @@
   isolated `versions/<mc>+<Loader><ver>` (or the official installer's `-forge-`/`-neoforge-`)
   directory first; with `false` the loader is installed in place, mutating the vanilla directory.
 - **New error** — `MdtError::UninstallFailed`.
+- **Resilient downloads** — every loader download now follows a mirror-first, official-as-fallback
+  policy, and the shared HTTP client carries connect/request timeouts (15s/30s), so a stalled or
+  403ing mirror falls back to the official source instead of hanging.
 - **Macro Name & Mechanism Breaking** — the `mdt_install!` macro is renamed to `full_install!`, and it now
   installs vanilla and the loader in one shot (with a five-argument form for the copy-on-write
   flag). It expands to the new `MdtClient::full_install`.

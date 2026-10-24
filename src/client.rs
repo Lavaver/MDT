@@ -150,6 +150,7 @@ impl MdtClient {
         copy_vanilla: bool,
     ) -> Result<InstalledVersion, MdtError> {
         let mc_version = installer::read_vanilla_version_id(vanilla_dir).await?;
+        eprintln!("[mdt] install_modloader: resolved mc_version={mc_version}");
 
         if !loader.compatible_with(&mc_version) {
             return Err(MdtError::LoaderInstallFailed(format!(
@@ -164,7 +165,13 @@ impl MdtClient {
         let target_dir = if copy_vanilla {
             let isolated_id = installer::installer_version_id(&mc_version, loader, loader_version);
             let isolated_dir = installer::version_dir(&self.root, &isolated_id);
+            eprintln!(
+                "[mdt] install_modloader: copy-on-write {} -> {}",
+                vanilla_dir.display(),
+                isolated_dir.display()
+            );
             installer::copy_dir_recursive(vanilla_dir, &isolated_dir).await?;
+            eprintln!("[mdt] install_modloader: copy-on-write done");
             None
         } else {
             Some(vanilla_dir.to_path_buf())
@@ -196,17 +203,28 @@ impl MdtClient {
         loader_version: &str,
         copy_vanilla: bool,
     ) -> Result<InstalledVersion, MdtError> {
+        eprintln!("[mdt] full_install: ensuring vanilla {version}");
         let vanilla_dir = self.root.join("versions").join(version);
         let vanilla_dir = if vanilla_dir.join(format!("{version}.json")).exists() {
+            eprintln!("[mdt] full_install: vanilla {version} already present, skipping");
             vanilla_dir
         } else {
-            // Install vanilla first, then point at the id the manifest actually reported
-            // (matches `version` in the common case).
+            eprintln!("[mdt] full_install: installing vanilla {version}");
             let installed = self.install_vanilla(version).await?;
+            eprintln!("[mdt] full_install: vanilla {version} installed");
+            // Point at the id the manifest actually reported (matches `version` in the common case).
             self.root.join("versions").join(&installed.id)
         };
-        self.install_modloader(&vanilla_dir, loader, loader_version, copy_vanilla)
-            .await
+        eprintln!(
+            "[mdt] full_install: installing loader {} {} (copy_vanilla={copy_vanilla})",
+            loader.display_name(),
+            loader_version
+        );
+        let result = self
+            .install_modloader(&vanilla_dir, loader, loader_version, copy_vanilla)
+            .await;
+        eprintln!("[mdt] full_install: loader install finished");
+        result
     }
 
     /// Revert a mod loader back to pure vanilla, using a SHA-1 manifest comparison.

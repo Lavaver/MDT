@@ -5,13 +5,14 @@
 //! JSON — no Java required.
 
 use crate::error::MdtError;
+use crate::mirror::Mirror;
 use crate::modloader::ModLoader;
 use crate::urls::ManifestUrls;
 
 use super::version_json::{download_library, read_vanilla_launch_args, GeneratedLibrary, GeneratedVersionJson};
 use super::{
-    download_to_file, libraries_dir, library_path_from_name, loader_version_id, target_version_dir,
-    InstallMethod, InstallRequest, InstalledVersion,
+    dedup_urls, download_to_file_from_candidates, libraries_dir, library_path_from_name,
+    loader_version_id, target_version_dir, InstallMethod, InstallRequest, InstalledVersion,
 };
 
 pub async fn install(
@@ -25,12 +26,12 @@ pub async fn install(
     let liteloader_name = format!("com.mumfrey:liteloader:{}", req.loader_version);
     let liteloader_path = library_path_from_name(&liteloader_name)?;
     let liteloader_dest = libraries_dir(&req.root_dir).join(&liteloader_path);
-    let liteloader_url = format!(
-        "{}/{}/liteloader-{}.jar",
-        urls.liteloader_base, req.mc_version, req.loader_version
-    );
-    let real_url = urls.apply_mirror(&liteloader_url, &req.mirror);
-    download_to_file(http, &real_url, &liteloader_dest).await?;
+    let file = format!("{}/liteloader-{}.jar", req.mc_version, req.loader_version);
+    let mirrored = urls.apply_mirror(&format!("{}/{}", urls.liteloader_base, file), &req.mirror);
+    // Mirror first, official as fallback.
+    let official = format!("{}/{}", ManifestUrls::try_new(&Mirror::Mojang)?.liteloader_base, file);
+    let candidates = dedup_urls(&[mirrored.clone(), official]);
+    download_to_file_from_candidates(http, &candidates, &liteloader_dest).await?;
 
     // 2. Download LaunchWrapper and ASM (required at runtime).
     download_library(
@@ -67,7 +68,7 @@ pub async fn install(
         main_class: "net.minecraft.launchwrapper.Launch".to_string(),
         minecraft_arguments: Some(args),
         libraries: vec![
-            GeneratedLibrary::direct(&liteloader_name, &liteloader_path, &real_url),
+            GeneratedLibrary::direct(&liteloader_name, &liteloader_path, &mirrored),
             GeneratedLibrary::maven("net.minecraft:launchwrapper:1.12", "https://libraries.minecraft.net/")?,
             GeneratedLibrary::maven("org.ow2.asm:asm-all:5.2", "https://libraries.minecraft.net/")?,
         ],

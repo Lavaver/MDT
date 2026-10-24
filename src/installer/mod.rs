@@ -30,6 +30,7 @@ use futures::StreamExt;
 use crate::error::MdtError;
 use crate::mirror::Mirror;
 use crate::modloader::ModLoader;
+use crate::urls::ManifestUrls;
 
 pub use mcr::{
     build_manifest, find_removed_files, scan_manifest, verify_manifest, write_markers, ManifestFile,
@@ -95,13 +96,21 @@ pub async fn install_modloader(
     http: &reqwest::Client,
     req: InstallRequest,
 ) -> Result<InstalledVersion, MdtError> {
-    match req.loader {
+    eprintln!(
+        "[mdt] install_modloader: dispatching {} mc={} loader={}",
+        req.loader.display_name(),
+        req.mc_version,
+        req.loader_version
+    );
+    let result = match req.loader {
         ModLoader::Forge => forge::install(http, req).await,
         ModLoader::Neoforge => neoforge::install(http, req).await,
         ModLoader::Fabric => fabric::install(http, req).await,
         ModLoader::Quilt => quilt::install(http, req).await,
         ModLoader::Liteloader => liteloader::install(http, req).await,
-    }
+    };
+    eprintln!("[mdt] install_modloader: dispatch finished");
+    result
 }
 
 // ===== shared helpers =====
@@ -191,10 +200,12 @@ pub async fn download_to_file(
     url: &str,
     dest: &Path,
 ) -> Result<(), MdtError> {
+    eprintln!("[mdt] download_to_file: {url} -> {}", dest.display());
     if let Some(parent) = dest.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
     let resp = http.get(url).send().await?.error_for_status()?;
+    eprintln!("[mdt] download_to_file: response received, streaming body");
     let mut file = tokio::fs::File::create(dest).await?;
     let mut stream = resp.bytes_stream();
     while let Some(chunk) = stream.next().await {
@@ -202,7 +213,57 @@ pub async fn download_to_file(
         tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await?;
     }
     tokio::io::AsyncWriteExt::flush(&mut file).await?;
+    eprintln!("[mdt] download_to_file: done {}", dest.display());
     Ok(())
+}
+
+/// Deduplicate a list of URL candidates, preserving order and dropping empty entries.
+pub fn dedup_urls(candidates: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for url in candidates {
+        if !url.is_empty() && !out.contains(url) {
+            out.push(url.clone());
+        }
+    }
+    out
+}
+
+/// Download `upstream_url` to `dest`, trying the mirror first and the upstream (official) source
+/// as a fallback. This is the mirror-first, official-as-backup policy applied to every loader
+/// download, so a stalled or 403ing mirror can never hang or kill the install.
+pub async fn download_maven_fallback(
+    http: &reqwest::Client,
+    upstream_url: &str,
+    dest: &Path,
+    mirror: &Mirror,
+    urls: &ManifestUrls,
+) -> Result<(), MdtError> {
+    let mirrored = urls.apply_maven_mirror(upstream_url, mirror);
+    let candidates = dedup_urls(&[mirrored, upstream_url.to_string()]);
+    download_to_file_from_candidates(http, &candidates, dest).await
+}
+
+/// Download `dest` from the first candidate URL that succeeds, removing any partial file between
+/// attempts.
+pub async fn download_to_file_from_candidates(
+    http: &reqwest::Client,
+    candidates: &[String],
+    dest: &Path,
+) -> Result<(), MdtError> {
+    let mut last_err = None;
+    for url in candidates {
+        match download_to_file(http, url, dest).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("[mdt] download_to_file: {url} failed, trying next: {e}");
+                let _ = tokio::fs::remove_file(dest).await;
+                last_err = Some(e);
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        MdtError::InvalidManifest("no reachable download source".to_string())
+    }))
 }
 
 /// Extract a JAR (ZIP) to a directory, skipping directories and `META-INF/`, with zip-slip
@@ -241,9 +302,12 @@ pub async fn unzip_jar(src: &Path, dest: &Path) -> Result<(), MdtError> {
 
 /// Recursively copy a directory (used to flatten an installer's `maven/` into `libraries/`).
 pub async fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), MdtError> {
+    eprintln!("[mdt] copy_dir_recursive: {} -> {}", src.display(), dest.display());
     let src = src.to_path_buf();
     let dest = dest.to_path_buf();
-    tokio::task::spawn_blocking(move || copy_dir_sync(&src, &dest)).await?
+    let result = tokio::task::spawn_blocking(move || copy_dir_sync(&src, &dest)).await?;
+    eprintln!("[mdt] copy_dir_recursive: done");
+    result
 }
 
 fn copy_dir_sync(src: &Path, dest: &Path) -> Result<(), MdtError> {

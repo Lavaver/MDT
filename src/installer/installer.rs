@@ -10,7 +10,7 @@ use crate::error::MdtError;
 use crate::mirror::Mirror;
 use crate::urls::ManifestUrls;
 
-use super::{detect_java, download_to_file, ensure_empty_dir};
+use super::{detect_java, download_maven_fallback, ensure_empty_dir};
 
 /// Run the full Method A flow: download installer → detect Java → run natively → clean up.
 pub async fn install_via_official_installer(
@@ -24,8 +24,7 @@ pub async fn install_via_official_installer(
     ensure_empty_dir(&temp_dir).await?;
 
     let installer_jar = temp_dir.join("installer.jar");
-    let real_url = urls.apply_maven_mirror(installer_url, mirror);
-    download_to_file(http, &real_url, &installer_jar).await?;
+    download_maven_fallback(http, installer_url, &installer_jar, mirror, urls).await?;
 
     let java = detect_java().await?;
     run_java_installer(&java, &installer_jar, root_dir).await?;
