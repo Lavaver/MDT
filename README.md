@@ -15,6 +15,7 @@ bars, no prompts. You call a function, you get a `Result`.
 - Vanilla Minecraft, plus Forge, Fabric, Quilt, NeoForge, and LiteLoader.
 - Isolated installs — each loader lands in its own `versions/<mc>+<Loader><ver>` folder, so a
   broken loader never touches your vanilla game.
+- Uninstall — revert a loader back to pure vanilla with a SHA-1 manifest comparison.
 - SHA-1 verified downloads with automatic mirror fallback when a source is slow or blocked.
 - Custom mirrors via a `providers.toml` you can edit (compiled in at build time).
 - No terminal dependencies in the core; `cli` and `tui` are opt-in features.
@@ -29,7 +30,7 @@ mdt-minecraft = "0.4"
 ## Quick start
 
 ```rust
-use mdt::{MdtClient, Mirror, ModLoader, mdt_install};
+use mdt::{MdtClient, Mirror, ModLoader, full_install};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -38,12 +39,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .root_dir("./.minecraft")
         .build()?;
 
-    client.install_vanilla("1.20.1").await?;                                   // vanilla
-    mdt_install!(client, "1.20.1", ModLoader::Fabric, "0.15.11").await?;       // Fabric
+    // Installs vanilla 1.20.1 (if it isn't there yet), then Fabric — all in one line.
+    full_install!(client, "1.20.1", ModLoader::Fabric, "0.15.11").await?;
 
     Ok(())
 }
 ```
+
+`install_modloader` takes a vanilla version directory (not a version string) and a copy-on-write
+flag, so you can pick between an isolated copy and an in-place install:
+
+```rust
+let vanilla = client.root_dir().join("versions").join("1.20.1");
+
+// Copy the vanilla dir into versions/1.20.1+Fabric0.15.11 and install there.
+client.install_modloader(&vanilla, ModLoader::Fabric, "0.15.11", true).await?;
+
+// Install directly inside versions/1.20.1 (mutates it).
+client.install_modloader(&vanilla, ModLoader::Quilt, "0.24.0", false).await?;
+
+// Revert a loader back to vanilla.
+client.uninstall_modloader(&vanilla, ModLoader::Quilt).await?;
 
 ## Isolation
 
@@ -87,7 +103,8 @@ Method A needs a local Java runtime (`JAVA_HOME` or `java` on `PATH`).
 Every fallible call returns `Result<T, MdtError>`, so you can match on exactly what went wrong:
 
 ```rust
-match client.install_modloader("1.20.1", ModLoader::Forge, "47.2.0").await {
+let vanilla = client.root_dir().join("versions").join("1.20.1");
+match client.install_modloader(&vanilla, ModLoader::Forge, "47.2.0", true).await {
     Ok(v)   => println!("installed {} via {}", v.id, v.method),
     Err(e)  => match e {
         mdt::MdtError::JavaNotFound          => eprintln!("install Java first"),
@@ -107,6 +124,33 @@ use mdt::{version_dir, download_task};
 let dir  = version_dir!(client, "1.16.5", Fabric, "0.20.0");  // <root>/versions/1.16.5+Fabric0.20.0
 let task = download_task!("https://…/lib.jar", "libraries/lib.jar", "abc123", 42);
 ```
+
+### `full_install!`
+
+`full_install!` is the whole install in one line — it installs the vanilla version (if it isn't
+already on disk), then the loader, so you don't have to call `install_vanilla` separately:
+
+```rust
+use mdt::{MdtClient, Mirror, ModLoader, full_install};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = MdtClient::builder().mirror(Mirror::BMCLAPI).root_dir("./.minecraft").build()?;
+
+    // Vanilla + loader, copy-on-write (default): vanilla stays untouched, the loader lands in
+    // its own directory.
+    full_install!(client, "1.20.1", ModLoader::Fabric, "0.15.11").await?;
+
+    // Pass `false` to install the loader in place, mutating the vanilla directory.
+    full_install!(client, "1.20.1", ModLoader::Quilt, "0.24.0", false).await?;
+
+    Ok(())
+}
+```
+
+Under the hood `full_install!(client, "1.20.1", loader, "ver")` expands to
+`client.full_install("1.20.1", loader, "ver", true)` — which installs vanilla first, then calls
+[`install_modloader`](#isolation). If you already installed vanilla, the vanilla step is skipped.
 
 ## Feature flags
 

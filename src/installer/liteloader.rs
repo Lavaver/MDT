@@ -10,7 +10,7 @@ use crate::urls::ManifestUrls;
 
 use super::version_json::{download_library, read_vanilla_launch_args, GeneratedLibrary, GeneratedVersionJson};
 use super::{
-    download_to_file, libraries_dir, library_path_from_name, loader_version_id, version_dir,
+    download_to_file, libraries_dir, library_path_from_name, loader_version_id, target_version_dir,
     InstallMethod, InstallRequest, InstalledVersion,
 };
 
@@ -73,7 +73,7 @@ pub async fn install(
         ],
     };
 
-    let vdir = version_dir(&req.root_dir, &id);
+    let vdir = target_version_dir(&req, &id);
     tokio::fs::create_dir_all(&vdir).await?;
     let json_path = vdir.join(format!("{id}.json"));
     tokio::fs::write(&json_path, json.to_pretty_json()?).await?;

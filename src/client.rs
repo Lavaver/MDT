@@ -31,7 +31,9 @@ const DEFAULT_CONCURRENCY: usize = 3;
 ///         .build()?;
 ///
 ///     client.install_vanilla("1.20.1").await?;
-///     client.install_modloader("1.20.1", ModLoader::Fabric, "0.15.11").await?;
+///
+///     let vanilla_dir = client.root_dir().join("versions").join("1.20.1");
+///     client.install_modloader(&vanilla_dir, ModLoader::Fabric, "0.15.11", true).await?;
 ///
 ///     Ok(())
 /// }
@@ -96,27 +98,9 @@ impl MdtClient {
     /// * [`MdtError::VersionNotFound`] if `version` isn't in the manifest.
     /// * [`MdtError::NetworkError`] / [`MdtError::ChecksumMismatch`] on download failures.
     pub async fn install_vanilla(&self, version: &str) -> Result<VersionJson, MdtError> {
-        let manifest = manifest::fetch_minecraft_version_manifest(&self.http, &self.mirror).await?;
-        let entry = manifest
-            .versions
-            .iter()
-            .find(|v| v.id == version)
-            .cloned()
-            .ok_or_else(|| MdtError::VersionNotFound(version.to_string()))?;
-
+        let (text, version_json) =
+            manifest::fetch_version_json(&self.http, &self.mirror, version).await?;
         let urls = ManifestUrls::try_new(&self.mirror)?;
-        let version_url = urls.apply_mirror(&entry.url, &self.mirror);
-        let text = self
-            .http
-            .get(&version_url)
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
-            .await?;
-        let version_json: VersionJson = serde_json::from_str(&text).map_err(|e| {
-            MdtError::JsonParseError(e).context(format!("parsing version JSON for {version}"))
-        })?;
 
         // Save the vanilla version JSON.
         let vdir = self.root.join("versions").join(&version_json.id);
@@ -143,22 +127,31 @@ impl MdtClient {
         Ok(version_json)
     }
 
-    /// Install a mod loader into an isolated version directory.
+    /// Install a mod loader, given an existing vanilla version directory.
     ///
-    /// Uses the `[mc_version]+[Loader][LoaderVersion]` layout (see [`installer::loader_version_id`]),
-    /// so vanilla `versions/<mc_version>` is never overwritten.
+    /// The Minecraft version is read from `<vanilla_dir>/<vanilla_dir-name>.json`'s `id` field,
+    /// which is authoritative for compatibility checks.
+    ///
+    /// When `copy_vanilla` is `true`, `vanilla_dir` is first copied to the isolated
+    /// `versions/<mc_version>+<Loader><loader_version>` directory (Method A loaders use their own
+    /// `-forge-`/`-neoforge-` convention) and the loader is installed there, leaving vanilla
+    /// untouched. When `false`, the loader is installed directly inside `vanilla_dir`, mutating it.
     ///
     /// # Errors
     ///
-    /// * [`MdtError::LoaderInstallFailed`] if the loader doesn't support `mc_version`.
+    /// * [`MdtError::InvalidManifest`] if `vanilla_dir` has no readable version JSON.
+    /// * [`MdtError::LoaderInstallFailed`] if the loader doesn't support the version.
     /// * [`MdtError::JavaNotFound`] if a Method A loader is requested but there's no Java.
     pub async fn install_modloader(
         &self,
-        mc_version: &str,
+        vanilla_dir: &Path,
         loader: ModLoader,
         loader_version: &str,
+        copy_vanilla: bool,
     ) -> Result<InstalledVersion, MdtError> {
-        if !loader.compatible_with(mc_version) {
+        let mc_version = installer::read_vanilla_version_id(vanilla_dir).await?;
+
+        if !loader.compatible_with(&mc_version) {
             return Err(MdtError::LoaderInstallFailed(format!(
                 "{} is not compatible with Minecraft {}",
                 loader.display_name(),
@@ -166,14 +159,85 @@ impl MdtClient {
             )));
         }
 
+        // Copy-on-write: clone the vanilla directory into the loader's isolated directory before
+        // installing, so vanilla is never mutated. Otherwise install in place.
+        let target_dir = if copy_vanilla {
+            let isolated_id = installer::installer_version_id(&mc_version, loader, loader_version);
+            let isolated_dir = installer::version_dir(&self.root, &isolated_id);
+            installer::copy_dir_recursive(vanilla_dir, &isolated_dir).await?;
+            None
+        } else {
+            Some(vanilla_dir.to_path_buf())
+        };
+
         let req = InstallRequest {
-            mc_version: mc_version.to_string(),
+            mc_version,
             loader,
             loader_version: loader_version.to_string(),
             root_dir: self.root.clone(),
             mirror: self.mirror.clone(),
+            target_dir,
         };
         installer::install_modloader(&self.http, req).await
+    }
+
+    /// Install a complete stack — vanilla and then a mod loader — in one call.
+    ///
+    /// If the vanilla version isn't on disk yet it is downloaded first; otherwise the existing
+    /// install is reused. Then the loader is installed with the same copy-on-write behavior as
+    /// [`MdtClient::install_modloader`]. This is what the [`full_install!`](crate::full_install)
+    /// macro expands to.
+    ///
+    /// Returns the loader [`InstalledVersion`].
+    pub async fn full_install(
+        &self,
+        version: &str,
+        loader: ModLoader,
+        loader_version: &str,
+        copy_vanilla: bool,
+    ) -> Result<InstalledVersion, MdtError> {
+        let vanilla_dir = self.root.join("versions").join(version);
+        let vanilla_dir = if vanilla_dir.join(format!("{version}.json")).exists() {
+            vanilla_dir
+        } else {
+            // Install vanilla first, then point at the id the manifest actually reported
+            // (matches `version` in the common case).
+            let installed = self.install_vanilla(version).await?;
+            self.root.join("versions").join(&installed.id)
+        };
+        self.install_modloader(&vanilla_dir, loader, loader_version, copy_vanilla)
+            .await
+    }
+
+    /// Revert a mod loader back to pure vanilla, using a SHA-1 manifest comparison.
+    ///
+    /// The base Minecraft version is read from `vanilla_dir`, its official manifest is fetched and
+    /// pre-loaded into memory, and every file is compared against it. Modified files are restored,
+    /// missing files are re-downloaded, and files the loader added are removed (the `mods/`
+    /// directory is preserved). Finally the vanilla JSON is rewritten and the whole directory is
+    /// re-verified.
+    ///
+    /// Safe to re-run: against an already-vanilla directory it is a no-op.
+    ///
+    /// # Errors
+    ///
+    /// * [`MdtError::InvalidManifest`] if `vanilla_dir` has no readable version JSON.
+    /// * [`MdtError::VersionNotFound`] if the base version isn't in the manifest.
+    /// * [`MdtError::UninstallFailed`] if a file fails post-restore verification.
+    pub async fn uninstall_modloader(
+        &self,
+        vanilla_dir: &Path,
+        loader: ModLoader,
+    ) -> Result<(), MdtError> {
+        installer::uninstall_modloader(
+            &self.http,
+            &self.root,
+            vanilla_dir,
+            loader,
+            &self.mirror,
+            self.concurrency,
+        )
+        .await
     }
 }
 

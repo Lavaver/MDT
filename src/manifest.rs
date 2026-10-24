@@ -158,6 +158,37 @@ pub async fn fetch_minecraft_version_manifest(
     Ok(serde_json::from_str(&text)?)
 }
 
+/// Fetch and parse the version JSON for a single Minecraft version.
+///
+/// Returns the raw text (for round-tripping back to disk) and the parsed
+/// [`crate::downloader::VersionJson`].
+pub async fn fetch_version_json(
+    http: &reqwest::Client,
+    mirror: &Mirror,
+    version: &str,
+) -> Result<(String, crate::downloader::VersionJson), MdtError> {
+    let manifest = fetch_minecraft_version_manifest(http, mirror).await?;
+    let entry = manifest
+        .versions
+        .iter()
+        .find(|v| v.id == version)
+        .cloned()
+        .ok_or_else(|| MdtError::VersionNotFound(version.to_string()))?;
+
+    let urls = ManifestUrls::try_new(mirror)?;
+    let version_url = urls.apply_mirror(&entry.url, mirror);
+    let text = http
+        .get(&version_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let version_json: crate::downloader::VersionJson = serde_json::from_str(&text)
+        .map_err(|e| MdtError::JsonParseError(e).context(format!("parsing version JSON for {version}")))?;
+    Ok((text, version_json))
+}
+
 /// Fetch the Forge version manifest.
 pub async fn fetch_forge_manifest(
     http: &reqwest::Client,

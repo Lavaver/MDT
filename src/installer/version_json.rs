@@ -14,7 +14,8 @@ use crate::urls::ManifestUrls;
 
 use super::{
     download_to_file, ensure_empty_dir, libraries_dir, library_path_from_name,
-    loader_version_id, unzip_jar, version_dir, InstallMethod, InstallRequest, InstalledVersion,
+    loader_version_id, target_version_dir, unzip_jar, version_dir, InstallMethod, InstallRequest,
+    InstalledVersion,
 };
 
 // ===== generated version JSON structures =====
@@ -186,7 +187,7 @@ pub async fn install_from_profile(
     }
 
     let profile = apply_mirror_to_json(profile, &req.mirror, urls);
-    let vdir = version_dir(&req.root_dir, &id);
+    let vdir = target_version_dir(req, &id);
     tokio::fs::create_dir_all(&vdir).await?;
     let json_path = vdir.join(format!("{id}.json"));
     tokio::fs::write(&json_path, serde_json::to_string_pretty(&profile)?).await?;
@@ -208,6 +209,7 @@ pub async fn install_legacy_forge(
     urls: &ManifestUrls,
     mc_version: &str,
     loader_version: &str,
+    target_dir: Option<&Path>,
 ) -> Result<InstalledVersion, MdtError> {
     let temp = root.join(".mdt-forge-unpack");
     ensure_empty_dir(&temp).await?;
@@ -243,7 +245,10 @@ pub async fn install_legacy_forge(
     let mirrored = apply_mirror_to_json(raw, mirror, urls);
 
     // 3. Write the version JSON.
-    let vdir = version_dir(root, &id);
+    let vdir = match target_dir {
+        Some(t) => t.to_path_buf(),
+        None => version_dir(root, &id),
+    };
     tokio::fs::create_dir_all(&vdir).await?;
     let json_path = vdir.join(format!("{id}.json"));
     tokio::fs::write(&json_path, serde_json::to_string_pretty(&mirrored)?).await?;

@@ -10,7 +10,10 @@ use crate::urls::ManifestUrls;
 
 use super::installer::install_via_official_installer;
 use super::version_json::install_legacy_forge;
-use super::{installer_version_id, version_dir, InstallMethod, InstallRequest, InstalledVersion};
+use super::{
+    installer_version_id, relocate_method_a, version_dir, InstallMethod, InstallRequest,
+    InstalledVersion,
+};
 
 /// The version at which Forge introduced the modern installer (`--installClient`).
 const MODERN_FORGE_MIN: McVersion = McVersion::new(1, 13, 0);
@@ -71,17 +74,24 @@ async fn install_modern(
         )));
     }
 
-    let jar_path = vdir.join(format!("{id}.jar"));
-    let jar = if jar_path.exists() {
-        Some(jar_path)
-    } else {
-        None
+    // In-place installs relocate the installer's output into the vanilla directory.
+    let (version_json, jar) = match &req.target_dir {
+        Some(target) => relocate_method_a(&req.root_dir, &id, target).await?,
+        None => {
+            let jar_path = vdir.join(format!("{id}.jar"));
+            let jar = if jar_path.exists() {
+                Some(jar_path)
+            } else {
+                None
+            };
+            (json_path, jar)
+        }
     };
 
     Ok(InstalledVersion {
         id,
         method: InstallMethod::JavaInjection,
-        version_json: json_path,
+        version_json,
         jar,
     })
 }
@@ -105,6 +115,7 @@ async fn install_legacy(
         urls,
         &req.mc_version,
         &forge_version,
+        req.target_dir.as_deref(),
     )
     .await
 }

@@ -17,8 +17,10 @@ mod fabric;
 mod forge;
 mod installer;
 mod liteloader;
+mod mcr;
 mod neoforge;
 mod quilt;
+mod uninstall;
 mod version_json;
 
 use std::path::{Path, PathBuf};
@@ -29,6 +31,11 @@ use crate::error::MdtError;
 use crate::mirror::Mirror;
 use crate::modloader::ModLoader;
 
+pub use mcr::{
+    build_manifest, find_removed_files, scan_manifest, verify_manifest, write_markers, ManifestFile,
+    ScanResult,
+};
+pub use uninstall::uninstall_modloader;
 pub use version_json::{
     apply_mirror_to_json, GeneratedArtifact, GeneratedLibrary, GeneratedLibraryDownloads,
     GeneratedVersionJson,
@@ -65,6 +72,9 @@ pub struct InstallRequest {
     pub root_dir: PathBuf,
     /// The mirror to download from.
     pub mirror: Mirror,
+    /// In-place install target. When set, the loader JSON is written into this directory instead
+    /// of the isolated `versions/<id>` directory (`copy_vanilla == false`).
+    pub target_dir: Option<PathBuf>,
 }
 
 /// The result of installing a mod loader.
@@ -272,4 +282,70 @@ pub fn version_dir(root: &Path, id: &str) -> PathBuf {
 #[must_use]
 pub fn libraries_dir(root: &Path) -> PathBuf {
     root.join("libraries")
+}
+
+/// Resolve the directory a loader JSON should be written into.
+///
+/// In-place installs ([`InstallRequest::target_dir`] set) write into that directory; otherwise the
+/// isolated `versions/<id>` directory is used.
+pub(crate) fn target_version_dir(req: &InstallRequest, id: &str) -> PathBuf {
+    req.target_dir
+        .clone()
+        .unwrap_or_else(|| version_dir(&req.root_dir, id))
+}
+
+/// Copy a Method A install's version JSON (and core JAR, if produced) into `target_dir`.
+///
+/// Method A always writes into the official installer's isolated `versions/<id>` directory; for an
+/// in-place install we relocate the result into the caller's vanilla directory.
+pub async fn relocate_method_a(
+    root: &Path,
+    src_id: &str,
+    target_dir: &Path,
+) -> Result<(PathBuf, Option<PathBuf>), MdtError> {
+    let src_dir = version_dir(root, src_id);
+    let json_name = format!("{src_id}.json");
+    let jar_name = format!("{src_id}.jar");
+
+    tokio::fs::create_dir_all(target_dir).await?;
+    let dst_json = target_dir.join(&json_name);
+    tokio::fs::copy(src_dir.join(&json_name), &dst_json).await?;
+
+    let src_jar = src_dir.join(&jar_name);
+    let jar = if src_jar.exists() {
+        let dst_jar = target_dir.join(&jar_name);
+        tokio::fs::copy(&src_jar, &dst_jar).await?;
+        Some(dst_jar)
+    } else {
+        None
+    };
+
+    Ok((dst_json, jar))
+}
+
+/// The version JSON path inside a version directory: `<dir>/<dir-name>.json`.
+pub(crate) fn version_json_path(dir: &Path) -> Result<PathBuf, MdtError> {
+    let name = dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| MdtError::InvalidManifest(format!("version directory has no valid name: {}", dir.display())))?;
+    Ok(dir.join(format!("{name}.json")))
+}
+
+/// Read the `id` field from a version directory's JSON — the authoritative Minecraft version.
+///
+/// Fails fast with [`MdtError::InvalidManifest`] if the JSON is missing or malformed.
+pub(crate) async fn read_vanilla_version_id(dir: &Path) -> Result<String, MdtError> {
+    let path = version_json_path(dir)?;
+    let text = tokio::fs::read_to_string(&path).await.map_err(|e| {
+        MdtError::InvalidManifest(format!("cannot read version JSON at {}: {e}", path.display()))
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+        MdtError::InvalidManifest(format!("version JSON at {} is malformed: {e}", path.display()))
+    })?;
+    value
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| MdtError::InvalidManifest(format!("version JSON at {} has no `id` field", path.display())))
 }

@@ -1,6 +1,6 @@
 //! Tests for the exported declarative macros.
 
-use mdt::{download_task, mdt_install, version_dir, MdtClient, Mirror, ModLoader};
+use mdt::{download_task, full_install, version_dir, MdtClient, Mirror, ModLoader};
 
 #[test]
 fn version_dir_macro_produces_isolated_path() {
@@ -43,7 +43,7 @@ fn download_task_macro_with_size_and_extract() {
 }
 
 #[test]
-fn mdt_install_macro_expands_to_method_call() {
+fn full_install_macro_expands_to_method_call() {
     let dir = std::env::temp_dir().join("mdt-macro-install");
     let client = MdtClient::builder()
         .mirror(Mirror::BMCLAPI)
@@ -52,5 +52,7 @@ fn mdt_install_macro_expands_to_method_call() {
         .unwrap();
 
     // Only check that the macro expands and type-checks; no network, no await.
-    let _future = mdt_install!(client, "1.16.5", ModLoader::Fabric, "0.20.0");
+    let _future = full_install!(client, "1.16.5", ModLoader::Fabric, "0.20.0");
+    // The five-argument form controls copy-on-write.
+    let _future_in_place = full_install!(client, "1.16.5", ModLoader::Quilt, "0.24.0", false);
 }

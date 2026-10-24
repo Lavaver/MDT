@@ -82,6 +82,10 @@ pub enum MdtError {
     /// A mirror provider name is not declared in `providers.toml`.
     #[error("unknown mirror provider: {0}")]
     UnknownProvider(String),
+
+    /// Uninstalling a mod loader failed (e.g. post-restore verification).
+    #[error("uninstall failed: {0}")]
+    UninstallFailed(String),
 }
 
 impl MdtError {

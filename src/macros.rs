@@ -1,7 +1,7 @@
 //! Shorthand macros.
 //!
 //! Exported at the crate root as `mdt::version_dir!`, `mdt::download_task!`, and
-//! `mdt::mdt_install!`. Internal refs use `$crate::` so they're hygienic from other crates.
+//! `mdt::full_install!`. Internal refs use `$crate::` so they're hygienic from other crates.
 
 /// The isolated version directory for a loader install.
 ///
@@ -79,23 +79,29 @@ macro_rules! download_task {
     };
 }
 
-/// Install a mod loader in one line.
+/// **FULL INSTALL** vanilla *and* a mod loader in one line.
 ///
-/// Just a wrapper around [`MdtClient::install_modloader`][crate::MdtClient::install_modloader].
+/// Expands to [`MdtClient::full_install`][crate::MdtClient::full_install]: it installs the vanilla
+/// version first (if it isn't already present), then the loader. Pass a trailing `false` to install
+/// the loader in place instead of copy-on-write.
 ///
 /// ```no_run
-/// use mdt::{mdt_install, MdtClient, Mirror, ModLoader};
+/// use mdt::{full_install, MdtClient, Mirror, ModLoader};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let client = MdtClient::builder().mirror(Mirror::BMCLAPI).root_dir("./.minecraft").build()?;
-///     mdt_install!(client, "1.16.5", ModLoader::Fabric, "0.20.0").await?;
+///     full_install!(client, "1.16.5", ModLoader::Fabric, "0.20.0").await?;         // vanilla + copy-on-write
+///     full_install!(client, "1.16.5", ModLoader::Quilt, "0.24.0", false).await?;    // vanilla + in place
 ///     Ok(())
 /// }
 /// ```
 #[macro_export]
-macro_rules! mdt_install {
+macro_rules! full_install {
     ($client:expr, $mc_version:expr, $loader:expr, $loader_version:expr) => {
-        $client.install_modloader($mc_version, $loader, $loader_version)
+        $client.full_install($mc_version, $loader, $loader_version, true)
+    };
+    ($client:expr, $mc_version:expr, $loader:expr, $loader_version:expr, $copy_vanilla:expr) => {
+        $client.full_install($mc_version, $loader, $loader_version, $copy_vanilla)
     };
 }

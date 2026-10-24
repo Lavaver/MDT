@@ -19,7 +19,9 @@
 //!         .build()?;
 //!
 //!     client.install_vanilla("1.20.1").await?;
-//!     client.install_modloader("1.20.1", ModLoader::Fabric, "0.15.11").await?;
+//!
+//!     let vanilla_dir = client.root_dir().join("versions").join("1.20.1");
+//!     client.install_modloader(&vanilla_dir, ModLoader::Fabric, "0.15.11", true).await?;
 //!
 //!     Ok(())
 //! }
@@ -69,7 +71,7 @@
 //!
 //! # Macros
 //!
-//! [`version_dir!`], [`download_task!`], and [`mdt_install!`] are one-line shortcuts for isolated
+//! [`version_dir!`], [`download_task!`], and [`full_install!`] are one-line shortcuts for isolated
 //! paths, download tasks, and loader installs.
 
 mod client;
